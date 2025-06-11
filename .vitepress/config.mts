@@ -2,6 +2,7 @@ import { defineConfig } from "vitepress";
 
 // https://vitepress.dev/reference/site-config
 export default defineConfig({
+  base: "/blog/", // 部署到github时需要设置
   title: "前端博客",
   description: "",
   srcDir: "src/post",

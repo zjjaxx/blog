@@ -6,6 +6,7 @@ export default defineConfig({
   description: "",
   srcDir: "src/post",
   themeConfig: {
+    outline:"deep",
     // https://vitepress.dev/reference/default-theme-config
     nav: [
       { text: "面试", link: "/项目介绍" },

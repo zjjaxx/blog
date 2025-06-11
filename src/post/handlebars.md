@@ -1,4 +1,4 @@
-
+<!-- 
 ## 简介
 
 - 轻量的语义化模板
@@ -48,6 +48,7 @@ Handlebars.registerHelper('loud', function (aString) {
 
 一些诸如 `#with` and <span v-pre>#each</span> 的助手代码使你能够操作嵌套的对象。当你在路径中包含 `../` 时，Handlebars 将转回父级上下文。
 
+
 ```handlebars
 {{permalink}}
 {{#each comments}}
@@ -58,6 +59,7 @@ Handlebars.registerHelper('loud', function (aString) {
   {{/if}}
 {{/each}}
 ```
+
 
 *** 注意`../` 解析的确切值根据调用该代码块的助手代码不同而有所不同。仅在上下文更改必要时使用 `../`。诸如 <span v-pre>{{#each}}</span> 之类的子助手代码将需要使用 <span v-pre>`../` </span> ，而诸如 <span v-pre>`{{#if}}` </span> 之类的助手代码则不需要。***
 
@@ -494,4 +496,4 @@ Handlebars.registerHelper('isdefined', function (value) {
 ***注意 userId其实是索引 index***
 
 ## 
-
+ -->

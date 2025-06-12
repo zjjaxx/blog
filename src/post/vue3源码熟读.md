@@ -1,4 +1,4 @@
-## 目录
+
 ## 概述
 
 Vue.js 由四个协同工作的主要子系统组成：
@@ -22,6 +22,9 @@ Vue.js 由四个协同工作的主要子系统组成：
   渲染系统创建vnode，然后patch新老虚拟DOM树，找出变更节点更新 DOM
 
 ###  通过一个简单示例讲解整个vue实现原理
+::: tip
+以下是在脚手架项目中运行的过程，不包括编译运行时
+:::
 
 ```typescript
 import { createApp } from 'vue'
@@ -30,7 +33,7 @@ const app = createApp(App)
 app.mount('#app')
 ```
 
-1. 编译系统把App 组件模版进行编译
+1. 在打包构建时编译系统把App 组件模版进行编译
 
    ```vue
    <script setup>
@@ -46,7 +49,7 @@ app.mount('#app')
    
    ```
 
-   主要是生成组件模版的render方法和setup方法
+   主要是生成具有render方法和setup方法的组件模版
 
    ```js
    /* Analyzed bindings: {
@@ -95,11 +98,9 @@ createRenderer(rendererOptions))
 
 - 调用渲染器创建 一个APP实例
 
-- 调用APP实例代理的mount 方法
+- 调用APP实例代理的mount方法
 
   - 标准化挂载的容器
-
-    如果组件的render和template都不存在的话，则取容器的innerHTML作为模版
 
   - 调用APP实例真实的挂载方法
 
@@ -108,25 +109,18 @@ createRenderer(rendererOptions))
     - 调用渲染器的render方法
 
       - 调用渲染器的patch方法，因为没有老的vnode，则直接进行挂载组件
-
         - 创建组件实例
         - 把组件模版定义的props属性放到组件实例的props对象中，其余的放入组件实例的attrs对象中,并且给组件实例的props设置浅响应式shallowReactive
-        - 标准化children设置为组件实例上的slots对象中
         - 如果组件模版有setup方法
           - 如果模版setup方法参数大于1，则创建setupContext上下文，该对象有组件实例上的attrs、slots、emit、*exposed*属性对象
           - 执行组件模版的setup方法，第一个参数为组件实例的props，第二个参数为setupContext上下文
           - 处理setupResult结果，如果返回的是函数的话，则作为组件实例的render方法，如果是对象的话，则代理这个对象的get和set进行自动引用解包
-
         - 开始准备渲染组件
           - 新建一个响应式副作用ReactiveEffect，在副作用中进行组件的挂载和更新
           - 执行副作用
-            - 执行render函数生成vnode
-            - 在执行render函数过程中触发响应式对象的get拦截，新建一个Dep依赖对象，执行dep的track方法
-              - 新建一个Link对象来关联dep对象和activeSub(也就是当前执行的响应式副作用ReactiveEffect)
-            - 保存render函数生成vnode到组件实例的subTree属性上
-            - 执行patch方法递归渲染
-
-
+            - 执行render函数生成组件内的vnode
+            - 在执行render函数过程中触发响应式对象的get拦截，收集依赖
+            - 将render生成的vnode传入patch方法递归渲染
 
 ## 响应式系统
 
@@ -134,7 +128,7 @@ createRenderer(rendererOptions))
 
 **为什么在内存优化方面起到大作用？** vue3.5之前，Sub依赖的dep是一个集合，每次执行副作用前将集合清空，频繁的集合清空操作，GC也不能立即执行，所以内存释放慢。
 
-[双向链表流程图](https://excalidraw.com/#json=qlVp5LxxeQYmDJidjhGsG,Xo7f41UGMGBugPM1Wc3Ugg)
+[双向链表流程图](https://excalidraw.com/#json=zEKAiSexHftnRhqXN3nFY,Unjksk64uZaFfbyfG-hHew)
 
 ### 收集依赖
 
@@ -237,23 +231,58 @@ createRenderer(rendererOptions))
 
 ## 渲染系统
 
+### vue diff算法
 
+#### 面试回答
 
-## vue3 diff算法
+##### vue2中diff算法
 
-### 面试回答
-1. 预处理新旧children节点的前缀和后缀节点，如果key相同，则patch打补丁更新节点
-2. 遍历完如果旧children节点都处理完了，而新children节点还没处理完，则挂载新节点,如果新children节点处理完了而旧children节点还没处理完，则卸载旧节点
-3. 如果新旧children节点都有没处理完的，按剩余新节点数组大小创建source数组，默认-1，先遍历没处理完的新children节点，生成map，然后遍历没处理完的老children节点，如果在map中存在，则patch打补丁更新，并且把在老节点中的索引放到新节点source数组中，如果不存在则卸载，同时判断新节点的顺序是否保持和老节点一样单调递增
-4. 如果有单调递增，则说明要移动节点，根据source算出最长递增子序列在source中的索引数组，子序列中的节点不需要移动,使用双指针来遍历source数组，i指向最长递增子序列的最后一个位置，j指向source最后一个，从后向前遍历，如果是-1，表示新增，直接挂载，如果遍历到最长递增子序列中，则不做任何处理，都不是的话移动元素
+vue2采用的是双端diff算法
 
-## vue3最长递增子序列算法
+1. 分别在新老children上设置首尾指针
+2. 在while循环中开启比较，分别进行【头部、头部】、【尾部、尾部】，【头部、尾部】、【尾部、头部】4次比较，如果key相同，则patch打补丁
+3. 在理想情况下，都能有一端处理完，如果老children还有剩余，则批量卸载，如果新children还有剩余，则批量挂载
+4. 在非理想情况下，首尾指针都不一致，则遍历老children查找是否存在有和新元素相同的key值的元素，如果存在则先patch打补丁，然后移动到头部，如果找不到则直接挂载到头部
+
+##### vue3中diff算法
+
+1. 开启while循环预处理新旧children的前置和后置节点，如果key相同，则patch打补丁更新节点
+
+   ::: details
+
+   细节，头部指针都用j遍历，指到不一致为止，因为长度可能不同，尾部用2个指针遍历，newEnd和oldEnd
+
+   :::
+
+2. 在理想情况下，都能有一端处理完，如果新的children有剩余，则挂载新节点,如果旧children有剩余，则卸载旧节点
+
+3. 在非理想情况下，首先找出哪些节点需要移动，按剩余新节点数组大小创建source数组，用来存储新元素在旧children的索引位置，没有则为-1，并且判断新节点在原来老children中是否单调递增
+
+   ::: details
+
+   细节，先遍历没处理完的新children节点，生成map，然后遍历没处理完的老children节点，如果在map中存在，则patch打补丁更新，并且把在老节点中的索引放到新节点source数组中，如果不存在则卸载，同时判断新节点的顺序是否保持和老节点一样单调递增，通过一个pos字段来保存老的位置索引，每次遍历时如果比pos小则表示需要移动，然后更新pos字段
+
+   :::
+
+4. 如果有单调递增，则说明要移动节点，根据source算出最长递增子序列在source中的索引数组，子序列中的节点不需要移动,for循环遍历移动元素和挂载新节点
+
+   ::: details
+
+   使用双指针来遍历source数组和最长递增子序列，i指向最长递增子序列的最后一个位置，j指向source最后一个，从后向前遍历，如果是-1，表示新增，直接挂载，如果在最长递增子序列中，则不做任何处理，都不是的话移动元素
+
+   :::
+
+   
+
+### vue3最长递增子序列算法
+
 ### 面试回答
 1. 动态规划，遍历数组，
 2. 通过二分查找+贪心算法找到每一个的局部最优解
 3. 回溯修正
 
-## vue3 key关键字的作用
+### vue3 key关键字的作用
+
 ### 面试回答
 1. key关键字主要是用在diff算法中，用来精确的查找新旧children节点数组中是否存在相同的节点，如果有就复用节点
 2. 如果元素节点key不同则会在patch时直接卸载节点
@@ -360,3 +389,41 @@ const classes = useCssModule()
 可以在css中动态设置样式属性
 
 实际的值会被编译成哈希化的 CSS 自定义属性，因此 CSS 本身仍然是静态的。自定义属性会通过内联样式的方式应用到组件的根元素上，并且在源值变更的时候响应式地更新。就是说在根元素上定义变量，然后再通过var来加载变量
+
+## vue2 和vue3有哪些不同
+
+### 响应式系统
+
+1. 响应式原理
+
+   - vue2基于Object.defineProperty实现，需要递归遍历对象属性进行劫持
+
+     局限性:无法监听对象属性的新增和删除、数组索引的变化，同时性能不好
+
+   - Vue3 改用Proxy代理数据，直接监听整个对象，支持动态属性增删，Map、Set等复杂类型
+
+     在return 返回时再进行响应式处理，性能更好
+
+2. API设计层面
+
+   Vue3 参考react引入了Composition API和setup函数，提供了逻辑代码复用的能力
+
+3. 在响应式原理方面
+
+   [在vue3.5的版本中对响应式系统进行了修改，采用了双向链表来提高内存效率](https://github.com/vuejs/core/blob/main/CHANGELOG.md)。
+
+### 编译系统
+
+**编译优化**：静态节点提升、动态属性缓存，减少 Diff 计算
+
+### 渲染系统
+
+Diff 算法变更，在vue2采用双端diff算法，而在vue3则采用了最长递增子序列优化算法
+
+### 组件系统
+
+对组件的生命周期进行了修改
+
+### 其它
+
+Typescript友好

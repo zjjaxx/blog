@@ -11,7 +11,7 @@ export default defineConfig({
     // https://vitepress.dev/reference/default-theme-config
     nav: [
       { text: "面试", link: "/项目介绍" },
-      { text: "源码", link: "/重生归来之vue3源码熟读" },
+      { text: "源码", link: "/vue3源码熟读" },
       { text: "学习笔记", link: "/模块系统" },
       { text: "开源", link: "/预渲染插件" },
     ],

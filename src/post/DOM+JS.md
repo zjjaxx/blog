@@ -320,7 +320,7 @@ getTopThreeTag()
 
 vant 图片懒加载原理
 
-[流程图](https://excalidraw.com/#json=39ahva7amaS1d2lqYMC0v,3QBiVpqeHBItdme6RD6zvA)
+[流程图](https://excalidraw.com/#json=6zVbGgVF1f2Y7TcfC5iFj,53xu45vPzosq_qQbe-Kdig)
 
 ### 面试回答
 
@@ -790,9 +790,8 @@ repaint 的本质就是重新根据分层信息计算了绘制指令。
 
 [popstate](https://developer.mozilla.org/zh-CN/docs/Web/API/Window/popstate_event)
 
-[vue-router流程图](https://excalidraw.com/#json=TLs-RUI2SVP_54Rq5M4-X,iqNi3GugImSYzyoEcgF7WA)
+[vue-router流程图](https://excalidraw.com/#json=dZZTAixyNKhzb4TrzLQYw,eIk8MaHepiuiJUFm-VOAYg)
 
-[vue-router源码分析](https://excalidraw.com/#json=4gOB5O5YCmtnyMJCY9nWP,Vrq39kdLQXFa6FBDVufqPA)
 
 ### 面试回答
 

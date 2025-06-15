@@ -37,6 +37,7 @@ export default defineConfig({
         text: "学习笔记",
         items: [
           { text: "模块系统", link: "/模块系统" },
+          { text: "react", link: "/react" },
           { text: "gsap", link: "/gsap" },
           { text: "handlebars", link: "/handlebars" },
           { text: "JSONSchema", link: "/JSON-schema" },

@@ -12,7 +12,7 @@ hero:
       link: /项目介绍
     - theme: alt
       text: 源码
-      link: /
+      link: /vue3源码熟读
 
 features:
   - title: 面试

@@ -39,7 +39,6 @@ export default defineConfig({
           { text: "模块系统", link: "/模块系统" },
           { text: "react", link: "/react" },
           { text: "gsap", link: "/gsap" },
-          { text: "handlebars", link: "/handlebars" },
           { text: "JSONSchema", link: "/JSON-schema" },
           { text: "nest", link: "/nest" },
           { text: "pnpm", link: "/pnpm" },

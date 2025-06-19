@@ -23,5 +23,7 @@ features:
     details: 学习笔记
   - title: 开源
     details: 开源精神
+  - title: 生活
+    details: 生活知识
 ---
 

@@ -14,6 +14,7 @@ export default defineConfig({
       { text: "源码", link: "/vue3源码熟读" },
       { text: "学习笔记", link: "/模块系统" },
       { text: "开源", link: "/预渲染插件" },
+      { text: "生活知识", link: "/租房" },
     ],
 
     sidebar: [
@@ -38,6 +39,7 @@ export default defineConfig({
         items: [
           { text: "模块系统", link: "/模块系统" },
           { text: "react", link: "/react" },
+          { text: "原子化CSS", link: "/原子化CSS" },
           { text: "gsap", link: "/gsap" },
           { text: "JSONSchema", link: "/JSON-schema" },
           { text: "nest", link: "/nest" },
@@ -58,6 +60,12 @@ export default defineConfig({
           { text: "组件库", link: "/组件库" },
           { text: "nest脚手架", link: "/nest脚手架" },
         ],
+      },
+      {
+        text: "生活知识",
+        items: [
+          { text: "租房", link: "/租房" },
+        ]
       },
     ],
 

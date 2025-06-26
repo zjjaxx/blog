@@ -322,7 +322,9 @@ Markdown 文件中的根级 `<script>` 和 `<style>` 标签与 Vue SFC 中的一
 还可以访问 VitePress 的运行时 API，例如 [`useData` 辅助函数](https://vitepress.dev/zh/reference/runtime-api#usedata)，它提供了当前页面的元数据：
 
 ### 使用组件
-
+::: tip
+script 标签要放前面
+:::
 可以直接在 Markdown 文件中导入和使用 Vue 组件。
 
 ```vue

@@ -39,6 +39,7 @@ export default defineConfig({
         items: [
           { text: "模块系统", link: "/模块系统" },
           { text: "react", link: "/react" },
+          { text: "typescript", link: "/typescript" },
           { text: "原子化CSS", link: "/原子化CSS" },
           { text: "gsap", link: "/gsap" },
           { text: "JSONSchema", link: "/JSON-schema" },
@@ -63,9 +64,7 @@ export default defineConfig({
       },
       {
         text: "生活知识",
-        items: [
-          { text: "租房", link: "/租房" },
-        ]
+        items: [{ text: "租房", link: "/租房" }],
       },
     ],
 

@@ -291,21 +291,361 @@ export type BridgeCallConfig =
 
 交叉类型常常用来为对象类型添加新属性。
 
+## declare 关键字
+
+::: tip
+
+declare 关键字的重要特点是，它只是通知编译器某个类型是存在的，不用给出具体实现。比如，只描述函数的类型，不给出函数的实现，如果不使用`declare`，这是做不到的。
+
+:::
+
+declare 关键字用来告诉编译器，某个类型是存在的，可以在当前文件中使用。
+
+它的主要作用，就是让当前文件可以使用其他文件声明的类型。举例来说，自己的脚本使用外部库定义的函数，编译器会因为不知道外部函数的类型定义而报错，这时就可以在自己的脚本里面使用`declare`关键字，告诉编译器外部函数的类型。这样的话，编译单个脚本就不会因为使用了外部类型而报错。
+
+### declare module，declare namespace
+
+::: tip
+
+declare module 和 declare namespace 里面，加不加 export 关键字都可以。
+
+:::
+
+#### 作用一
+
+如果想把变量、函数、类组织在一起，可以将 declare 与 module 或 namespace 一起使用。
+
+下面的例子是当前脚本使用了`myLib`这个外部库，它有方法`makeGreeting()`和属性`numberOfGreetings`。
+
+```typescript
+let result = myLib.makeGreeting('你好');
+console.log('欢迎词：' + result);
+
+let count = myLib.numberOfGreetings;
+```
+
+`myLib`的类型描述就可以这样写。
+
+```typescript
+declare namespace myLib {
+  function makeGreeting(s:string): string;
+  let numberOfGreetings: number;
+}
+```
+
+*** namespace 可以用module代替***
+
+#### 作用二
+
+declare 关键字的另一个用途，是为外部模块添加属性和方法时，给出新增部分的类型描述。或则某些第三方模块，原始作者没有提供接口类型，declare module 描述的模块名可以使用通配符。
+
+```typescript
+import { Foo as Bar } from 'moduleA';
+
+declare module 'moduleA' {
+  interface Foo {
+    custom: {
+      prop1: string;
+    }
+  }
+}
+```
+
+### declare global
+
+::: tip
+
+这个要和全局申明文件隔离
+
+:::
+
+如果要为 JavaScript 引擎的原生对象添加属性和方法，可以使用`declare global {}`语法。
+
+```typescript
+export {};
+
+declare global {
+  interface Window {
+    myAppConfig:object;
+  }
+}
+
+const config = window.myAppConfig;
+```
+
+这个示例第一行的空导出语句`export {}`，作用是强制编译器将这个脚本当作模块处理。这是因为`declare global`必须用在模块里面。
+
 ## TypeScript 类型运算符
+
+### keyof 运算符
+
+keyof 是一个单目运算符，接受一个对象类型作为参数，返回该对象的所有键名组成的联合类型。
+
+```typescript
+type MyObj = {
+  foo: number,
+  bar: string,
+};
+
+type Keys = keyof MyObj; // 'foo'|'bar'
+```
+
+keyof 取出的是键名组成的联合类型，如果想取出键值组成的联合类型，可以像下面这样写。
+
+```typescript
+type MyObj = {
+  foo: number,
+  bar: string,
+};
+
+type Keys = keyof MyObj;
+
+type Values = MyObj[Keys]; // number|string
+```
+
+#### 作用一
+
+keyof 运算符往往用于精确表达对象的属性类型。
+
+举例来说，取出对象的某个指定属性的值，JavaScript 版本可以写成下面这样。
+
+```typescript
+function prop(obj, key) {
+  return obj[key];
+}
+```
+
+上面这个函数添加类型，只能写成下面这样。
+
+```typescript
+function prop(
+  obj: { [p:string]: any },
+  key: string
+):any {
+  return obj[key];
+}
+```
+
+上面的类型声明有两个问题，一是无法表示参数`key`与参数`obj`之间的关系，二是返回值类型只能写成`any`。
+
+有了 keyof 以后，就可以解决这两个问题，精确表达返回值类型。
+
+```typescript
+function prop<Obj, K extends keyof Obj>(
+  obj:Obj, key:K
+):Obj[K] {
+  return obj[key];
+}
+```
+
+#### 作用二
+
+keyof 的另一个用途是用于属性映射，即将一个类型的所有属性逐一映射成其他值。
+
+```typescript
+type NewProps<Obj> = {
+  [Prop in keyof Obj]: boolean;
+};
+
+// 用法
+type MyObj = { foo: number; };
+
+// 等于 { foo: boolean; }
+type NewObj = NewProps<MyObj>;
+```
+
+### in 运算符
+
+TypeScript 语言的类型运算中，`in`运算符有不同的用法，用来取出（遍历）联合类型的每一个成员类型。
+
+```typescript
+type U = 'a'|'b'|'c';
+
+type Foo = {
+  [Prop in U]: number;
+};
+// 等同于
+type Foo = {
+  a: number,
+  b: number,
+  c: number
+};
+```
+
+### 方括号运算符
+
+方括号运算符（`[]`）用于取出对象的键值类型，比如`T[K]`会返回对象`T`的属性`K`的类型。
+
+```typescript
+type Person = {
+  age: number;
+  name: string;
+  alive: boolean;
+};
+
+// Age 的类型是 number
+type Age = Person['age'];
+```
+
+方括号的参数如果是联合类型，那么返回的也是联合类型。
+
+```typescript
+type Person = {
+  age: number;
+  name: string;
+  alive: boolean;
+};
+
+// number|string
+type T = Person['age'|'name'];
+
+// number|string|boolean
+type A = Person[keyof Person];
+```
+
+### extends...?: 条件运算符
+
+TypeScript 提供类似 JavaScript 的`?:`运算符这样的三元运算符，但多出了一个`extends`关键字。
+
+条件运算符`extends...?:`可以根据当前类型是否符合某种条件，返回不同的类型。
+
+```typescript
+T extends U ? X : Y
+```
+
+如果对泛型使用 extends 条件运算，有一个地方需要注意。当泛型的类型参数是一个联合类型时，那么条件运算符会展开这个类型参数，即`T<A|B> = T<A> | T<B>`，所以 extends 对类型参数的每个部分是分别计算的。
+
+```typescript
+type Cond<T> = T extends U ? X : Y;
+
+type MyType = Cond<A|B>;
+// 等同于 Cond<A> | Cond<B>
+// 等同于 (A extends U ? X : Y) | (B extends U ? X : Y)
+```
+
+上面示例中，泛型`Cond`的类型参数`A|B`是一个联合类型，进行条件运算时，相当于`A`和`B`分别进行条件运算，返回结果组成一个联合类型。也就是说，如果类型参数是联合类型，条件运算的返回结果依然是一个联合类型。
+
+如果不希望联合类型被条件运算符展开，可以把`extends`两侧的操作数都放在方括号里面。
+
+```typescript
+// 示例一
+type ToArray<Type> =
+  Type extends any ? Type[] : never;
+
+// 返回结果 string[]|number[]
+type T = ToArray<string|number>;
+
+// 示例二
+type ToArray<Type> =
+  [Type] extends [any] ? Type[] : never;
+
+// 返回结果 (string | number)[]
+type T = ToArray<string|number>;
+```
+
+`infer`关键字用来定义泛型里面推断出来的类型参数，而不是外部传入的类型参数。
+
+它通常跟条件运算符一起使用，用在`extends`关键字后面的父类型之中。
 
 ### infer 关键字
 
+`infer`关键字用来定义泛型里面推断出来的类型参数，而不是外部传入的类型参数。
 
+它通常跟条件运算符一起使用，用在`extends`关键字后面的父类型之中。
+
+```typescript
+type ReturnPromise<T> =
+  T extends (...args: infer A) => infer R 
+  ? (...args: A) => Promise<R> 
+  : T;
+```
+
+如果不使用`infer`，就不得不把`ReturnPromise<T>`写成`ReturnPromise<T, A, R>`，这样就很麻烦，相当于开发者必须人肉推断编译器可以完成的工作。
+
+下面是`infer`提取对象指定属性的例子。
+
+```typescript
+type MyType<T> =
+  T extends {
+    a: infer M,
+    b: infer N
+  } ? [M, N] : never;
+
+// 用法示例
+type T = MyType<{ a: string; b: number }>;
+// [string, number]
+```
+
+下面是`infer`通过正则匹配提取类型参数的例子。
+
+```typescript
+type Str = 'foo-bar';
+
+type Bar = Str extends `foo-${infer rest}` ? rest : never // 'bar'
+```
+
+### is 运算符
+
+`is`运算符可以用于类型保护。
+
+```typescript
+export const isTextNode = (node:  HTMLElement | Node): node is Text => {
+  return node.nodeType === Node.TEXT_NODE && node.nodeValue !== "";
+};
+```
+
+### **模板字符串**
+
+模板字符串里面引用的类型，如果是一个联合类型，那么它返回的也是一个联合类型，即模板字符串可以展开联合类型。
+
+```typescript
+type T = 'A'|'B';
+
+// "A_id"|"B_id"
+type U = `${T}_id`;
+```
+
+如果模板字符串引用两个联合类型，它会交叉展开这两个类型。
+
+```typescript
+type T = 'A'|'B';
+
+type U = '1'|'2';
+
+// 'A1'|'A2'|'B1'|'B2'
+type V = `${T}${U}`;
+```
+
+### satisfies 运算符
+
+`satisfies`运算符用来检测某个值是否符合指定类型。有时候，不方便将某个值指定为某种类型，但是希望这个值符合类型条件，这时候就可以用`satisfies`运算符对其进行检测。[TypeScript 4.9](https://www.typescriptlang.org/docs/handbook/release-notes/typescript-4-9.html#the-satisfies-operator)添加了这个运算符。
+
+可以使用`satisfies`运算符，对`palette`进行类型检测，但是不改变 TypeScript 对`palette`的类型推断。
+
+```typescript
+type Colors = "red" | "green" | "blue";
+type RGB = [number, number, number];
+
+const palette = {
+  red: [255, 0, 0],
+  green: "#00ff00",
+  bleu: [0, 0, 255] // 报错
+} satisfies Record<Colors, string|RGB>;
+
+const greenComponent = palette.green.substring(1); // 不报错
+```
+
+上面示例中，变量`palette`的值后面增加了`satisfies Record<Colors, string|RGB>`，表示该值必须满足`Record<Colors, string|RGB>`这个条件，所以能够检测出属性名`bleu`的拼写错误。同时，它不会改变`palette`的类型推断，所以，TypeScript 知道`palette.green`是一个字符串，对其调用`substring()`方法就不会报错。
 
 ## 在vue3中的使用技巧
 
-::: warning
+::: danger
 
 在 3.2 及以下版本中，`defineProps()` 的泛型类型参数仅限于类型字面量或对本地接口的引用。
 
 这个限制在 3.3 中得到了解决。最新版本的 Vue 支持在类型参数位置引用导入和有限的复杂类型。但是，由于类型到运行时转换仍然基于 AST，一些需要实际类型分析的复杂类型，例如条件类型，还未支持。你可以使用条件类型来指定单个 prop 的类型，但不能用于整个 props 对象的类型。
 
-*** 泛型和全局声明也不支持***
+泛型和全局声明也不支持
 
 :::
 

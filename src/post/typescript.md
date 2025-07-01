@@ -639,6 +639,8 @@ const greenComponent = palette.green.substring(1); // 不报错
 
 ## 在vue3中的使用技巧
 
+### defineProps
+
 ::: danger
 
 在 3.2 及以下版本中，`defineProps()` 的泛型类型参数仅限于类型字面量或对本地接口的引用。
@@ -648,8 +650,6 @@ const greenComponent = palette.green.substring(1); // 不报错
 泛型和全局声明也不支持
 
 :::
-
-### defineProps
 
 通过泛型参数来定义 props 的类型通常更直接，
 
@@ -672,5 +672,23 @@ import type { Props } from './foo'
 
 const props = defineProps<Props>()
 </script>
+```
+
+### 声明全局组价类型
+
+```typescript
+export * from "./iconProps";
+import _ZIcon from "./icon.vue";
+import {withInstall} from "@/utils/withInstall";
+
+const ZIcon=withInstall(_ZIcon);
+declare module 'vue' {
+    export interface GlobalComponents {
+        _ZIcon: typeof _ZIcon
+    }
+}
+export {
+    ZIcon
+} 
 ```
 

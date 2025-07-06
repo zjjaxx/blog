@@ -41,6 +41,7 @@ export default defineConfig({
           { text: "react", link: "/react" },
           { text: "typescript", link: "/typescript" },
           { text: "原子化CSS", link: "/原子化CSS" },
+          { text: "算法", link: "/算法" },
           { text: "gsap", link: "/gsap" },
           { text: "JSONSchema", link: "/JSON-schema" },
           { text: "nest", link: "/nest" },
@@ -64,7 +65,7 @@ export default defineConfig({
       },
       {
         text: "生活知识",
-        items: [{ text: "租房", link: "/租房" }],
+        items: [{ text: "租房", link: "/租房" },{ text: "菜谱", link: "/菜谱" }],
       },
     ],
 

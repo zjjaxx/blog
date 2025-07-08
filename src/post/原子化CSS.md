@@ -372,6 +372,58 @@ Tailwind 还为您的主题变量生成常规 CSS 变量，以便您可以以任
 
 ### [屏幕适配](https://github.com/worldzhao/blog/issues/20)
 
+## unocss
+
+### [动机以及原理](https://antfu.me/posts/reimagine-atomic-css-zh)
+
+- Windi CSS 和 Tailwind JIT 都依赖于对文件系统的预扫描，并使用文件系统监听器来实现 HMR。文件 I/O 不可避免地会引入开销，而你的构建工具实际上需要再次加载它们
+
+  ::: tip
+
+  从内部实现上看，Tailwind 依赖于 PostCSS 的 AST 进行修改，而 Windi 则是编写了一个自定义解析器和 AST
+
+  :::
+
+- UnoCSS 在 Vite 中，`transform` 的钩子将与所有的文件及其内容一起被迭代,UnoCSS 通过非常高效的字符串拼接来直接生成对应的 CSS 而非引入整个编译过程。同时，UnoCSS 对类名和生成的 CSS 字符串进行了缓存，当再次遇到相同的实用工具类时，它可以绕过整个匹配和生成的过程。这意味着只有构建在你应用程序中的模块才会影响生成的 CSS，而并非你文件夹下的任何文件。
+
+  ::: details
+
+  跳过解析，不使用 AST，通过transform钩子
+
+  ```js
+  export default {
+    plugins: [
+      {
+        name: 'unocss',
+        transform(code, id) {
+          // 过滤掉无需扫描的文件
+          if (!filter(id))
+            return
+  
+          // 扫描代码（同时也可以处理开发中的无效内容）
+          scan(code, id)
+  
+          // 我们只需要内容，所以不需要对代码进行转换
+          return null
+        },
+        resolveId(id) {
+          return id === VIRTUAL_CSS_ID ? id : null
+        },
+        async load(id) {
+          // 生成的 css 会作为一个虚拟模块供后续使用
+          if (id === VIRTUAL_CSS_ID)
+            return { code: await generate() }
+        }
+      }
+    ]
+  }
+  
+  ```
+
+  :::
+
+  
+
 ## 项目开发
 
 ### `Tailwindcss+vite`遇到问题（放弃）

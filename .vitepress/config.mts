@@ -31,6 +31,7 @@ export default defineConfig({
         text: "源码",
         items: [
           { text: "vue3源码熟读", link: "/vue3源码熟读" },
+          { text: "element-plus源码解析", link: "/element-plus源码解析" },
           { text: "微前端", link: "/微前端" },
         ],
       },

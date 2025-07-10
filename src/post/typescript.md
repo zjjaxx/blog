@@ -692,3 +692,73 @@ export {
 } 
 ```
 
+### vue3中的typescript 工具类
+
+#### UnwrapRef
+
+`UnwrapRef` 是一个 **类型工具**，主要用于处理嵌套的 `Ref` 对象，确保在类型系统中自动解包并推断出最底层的原始类型。它的核心作用是简化对嵌套响应式数据的类型操作，避免手动逐层访问 `.value` 的繁琐。
+
+::: tip
+
+**与 `reactive` 配合使用**
+
+当 `reactive` 包裹的对象中包含 `Ref` 时，`UnwrapRef` 会自动解包这些 `Ref`，使其成为普通响应式属性。
+
+```typescript
+import { reactive, ref, UnwrapRef } from 'vue';
+
+// reactive 中包含 Ref
+const state: UnwrapRef<{
+  count: Ref<number>;
+}> = reactive({
+  count: ref(0)
+});
+
+// 直接访问 count 的原始值（无需 .value）
+state.count = 1; // 正确
+```
+
+:::
+
+#### PropType
+
+用于在用运行时 props 声明时给一个 prop 标注更复杂的类型定义。
+
+```typescript
+export const tabProps = {
+    tabPosition:{
+        type:String as PropType< 'top' | 'right' | 'bottom' | 'left'>,
+        default:'top',
+    },
+    modelValue:{
+        type:[ String, Number ],
+        required:true,
+    },
+}
+```
+
+#### ExtractPropTypes
+
+从运行时的 props 选项对象中提取 props 类型。提取到的类型是面向内部的
+
+```
+export const tabProps = {
+    tabPosition:{
+        type:String as PropType< 'top' | 'right' | 'bottom' | 'left'>,
+        default:'top',
+    },
+    modelValue:{
+        type:[ String, Number ],
+        required:true,
+    },
+}
+type TabsProps = ExtractPropTypes<typeof tabProps> // 提取类型
+export interface TabsRootContext {
+    props: TabsProps // 应用类型
+    currentName: Ref<TabPaneName>
+    registerPane: (pane: TabsPaneContext) => void
+    unregisterPane: (pane: TabsPaneContext) => void
+    // nav$: Ref<TabNavInstance | undefined>
+}
+```
+

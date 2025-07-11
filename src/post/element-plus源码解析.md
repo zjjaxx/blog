@@ -216,7 +216,7 @@ export default {
 
 ## tabs组件原理
 
-使用案例
+### 使用案例
 
 ```vue
 <template>
@@ -240,118 +240,256 @@ const handleClick = (tab: TabsPaneContext, event: Event) => {
 </script>
 ```
 
-- el-tabs作为父组件来管理整个tabs组件
+### el-tabs作为父组件来管理整个tabs组件
 
-  - 在setup钩子函数中初始化 children数组来收集el-tab-pane组件，初始化注册el-tab-pane组件的registerPane方法，初始化当前激活的modelValue,使用provide往子组件注入相关属性和方法
+在setup钩子函数中初始化 children数组来收集el-tab-pane组件，初始化注册el-tab-pane组件的registerPane方法，初始化当前激活的modelValue,使用provide往子组件注入相关属性和方法
 
-    ::: tip
+::: tip
 
-    提供的响应式状态使后代组件可以由此和提供者建立响应式的联系。当提供 / 注入响应式的数据时，**建议尽可能将任何对响应式状态的变更都保持在供给方组件中**。这样可以确保所提供状态的声明和变更操作都内聚在同一个组件内，使其更容易维护。
+提供的响应式状态使后代组件可以由此和提供者建立响应式的联系。当提供注入响应式的数据时，**建议尽可能将任何对响应式状态的变更都保持在供给方组件中**。这样可以确保所提供状态的声明和变更操作都内聚在同一个组件内，使其更容易维护。
 
-    :::
+```typescript
+provide(tabsRootContextKey, {
+  props,// 组件属性
+  currentName,//当前激活的modelValue
+  registerPane,//注册el-tab-pane组件方法
+  unregisterPane,//删除el-tab-pane组件方法
+  nav$,// TabNav组件实例
+})
+```
 
-    ```typescript
-    provide(tabsRootContextKey, {
-      props,// 组件属性
-      currentName,//当前激活的modelValue
-      registerPane,//注册el-tab-pane组件方法
-      unregisterPane,//删除el-tab-pane组件方法
-      nav$,// TabNav组件实例
+:::
+
+::: details
+
+#### 深度解析useOrderedChildren
+
+在Tab组件中，虽然每个 tab-pane 在其 setup 函数中直接调用了 tabsRoot.registerPane(pane) ，但仍然需要排序的原因如下：
+
+##### 组件复用和重新排序 ：
+
+在复杂的应用场景中， tab-pane 可能会被动态添加、删除或重新排序，排序机制确保了即使在这些情况下，标签页仍然能够保持正确的显示顺序。
+
+###### addChild
+
+源码如下：
+
+```typescript
+    const addChild = (child: T) => {
+        children.value[child.uid] = child
+        triggerRef(children)
+
+        onMounted(() => {
+            const childNode = child.getVnode().el! as Node
+            const parentNode = childNode.parentNode!
+
+            if (!nodesMap.has(parentNode)) {
+                nodesMap.set(parentNode, [])
+
+                const originalFn = parentNode.insertBefore.bind(parentNode)
+                parentNode.insertBefore = <T extends Node>(
+                    node: T,
+                    anchor: Node | null,
+                ) => {
+                    // Schedule a job to update `orderedChildren` if the root element of child components is moved
+                    const shouldSortChildren = nodesMap
+                        .get(parentNode)!
+                        .some((el) => node === el || anchor === el)
+                    if (shouldSortChildren) triggerRef(children)
+
+                    return originalFn(node, anchor)
+                }
+            }
+
+            nodesMap.get(parentNode)!.push(childNode)
+        })
+    }
+```
+
+- 每添加一个tabpane组件都会设置children对象，child.uid为key，child为value,同时因为children是浅响应式，需要手动触发更新，
+- 在onMounted钩子函数中拦截tabpane组件动态排序，应为在vue diff算法中如果是组件位置变化是通过InsertBefore来操作DOM的，所以通过拦截该API来监听tabpane组件是否有移动
+- 如果有的话，则强制刷新tab-nav组件
+
+###### sortChildren
+
+源码如下：
+
+```typescript
+export const flattedChildren = (
+    children: FlattenVNodes | VNode | VNodeNormalizedChildren,
+): FlattenVNodes => {
+    const vNodes = isArray(children) ? children : [ children ]
+    const result: FlattenVNodes = []
+
+    vNodes.forEach((child) => {
+        if (isArray(child)) {
+            result.push(...flattedChildren(child))
+        } else if (isVNode(child) && child.component?.subTree) {
+            result.push(child, ...flattedChildren(child.component.subTree))
+        } else if (isVNode(child) && isArray(child.children)) {
+            result.push(...flattedChildren(child.children))
+        } else if (isVNode(child) && child.shapeFlag === 2) {
+            // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+            // @ts-ignore
+            result.push(...flattedChildren(child.type()))
+        } else {
+            result.push(child)
+        }
     })
-    ```
+    return result
+}
+```
 
-    ::: details
+其核心作用是深度优先遍历，递归展开嵌套的VNode（虚拟节点）结构，生成一维的VNode数组 ，便于后续统一处理子节点。
 
-    深度解析useOrderedChildren
-  
-    在Tab组件中，虽然每个 tab-pane 在其 setup 函数中直接调用了 tabsRoot.registerPane(pane) ，但仍然需要排序的原因如下：
-  
-    1. 组件初始化顺序不一定等于渲染顺序 ：
-       即使 tab-pane 按顺序调用 registerPane ，但由于Vue的响应式系统和组件生命周期的特性，组件的实际渲染顺序可能与初始化顺序不同 `tabs.tsx` 。
-    2. 动态组件加载 ：
-       当 tab-pane 包含异步组件或懒加载内容时，它们的加载完成时间可能不同，导致实际可用顺序与注册顺序不一致。
-    3. 条件渲染的影响 ：
-       如果 tab-pane 使用了 v-if 等条件渲染指令，它们的注册和显示状态可能会动态变化，需要排序来确保一致的展示顺序。
-    4. 组件复用和重新排序 ：
-       在复杂的应用场景中， tab-pane 可能会被动态添加、删除或重新排序，排序机制确保了即使在这些情况下，标签页仍然能够保持正确的显示顺序。
-    5. useOrderedChildren 钩子的设计 ：
-       从代码中可以看到， tabs 组件使用了 useOrderedChildren 钩子来管理 tab-pane ，这个钩子专门设计用于处理子组件的排序问题，确保即使在复杂的场景下，子组件也能按照正确的顺序展示。
-       综上所述，即使 tab-pane 在 setup 函数中直接调用了 registerPane ，仍然需要排序机制来确保标签页按照正确的顺序显示，特别是在复杂的应用场景中。
+遍历递归处理每个子节点 ：
 
-    :::
+- 情况1：子节点是数组 
+  - 递归调用 flattedChildren 展开，将结果合并到 result
+- 情况2：子节点是VNode且包含子组件的子树 （ child.component?.subTree ）***该情况表示这是个组件vnode***
+  - 将当前VNode本身加入结果，并递归展开其子组件的子树（ child.component.subTree ）
+- 情况3：子节点是VNode且其子节点是数组 （如普通元素的 children 数组）***该情况表示这是个普通元素vnode***
+  - 递归展开子节点数组，合并到 result
+- 情况4：子节点是VNode且是函数式组件 （ child.shapeFlag === 2 ，Vue中 ShapeFlags.FUNCTIONAL_COMPONENT 的枚举值为2）
+  - 调用函数式组件的类型（ child.type() ）获取其返回的VNode，再递归展开
+- 其他情况 （如文本节点、注释节点等基础VNode）
+  - 直接将子节点加入结果
 
-  - 渲染el-tab-pane组件
+```typescript
+const nodes = flattedChildren(vm.subTree).filter(
+        (n): n is VNode =>
+            isVNode(n) &&
+      (n.type as any)?.name === childComponentName &&
+      !!n.component,
+    )
+    const uids = nodes.map((n) => n.component!.uid)
+    return uids.map((uid) => children[uid]).filter((p) => !!p)
+}
+```
 
-    ```tsx
-       const panels = (
-            <div class={ns.e('content')}>{renderSlot(slots, 'default')}</div>
-          )
-    ```
+过滤出tabpane组件，按实际渲染出的tabpane组件顺序来排序orderedChildren
 
-    - 生成el-tab-pane组件实例，执行el-tab-pane组件的setup钩子函数
-  
-    - 获取当前实例、获取插槽
-  
-    - inject获取注入的父组件内容
-  
-    - 初始化active计算属性表示当前el-tab-pane是否激活(通过判断currentName 和props.name属性是否相等)
-
-    - 通过active计算属性来初始化loaded属性表示是否加载
-
-    - 初始化shouldBeRender计算属性来判断组件是否应该被渲染（通过!props.lazy || loaded.value || active.value来判断）
-  
-    - 初始化el-tab-pane组件信息
-
-      ```typescript
-      const pane = reactive({
-        uid: instance.uid,// 组件唯一ID
-        getVnode: () => instance.vnode,// 组件的vnode
-        slots,// 插槽
-        props,// 组件属性
-        paneName,// props.name属性
-        active,//当前el-tab-pane是否激活
-        index,
-        isClosable,
-        isFocusInsidePane,
-      })
-      ```
-  
-    - 调用registerPane方法注册el-tab-pane组件
-
-      ```typescript
-      tabsRoot.registerPane(pane)
-      ```
-
-  - 渲染tab-nav组件
-
-    ```tsx
-    const tabNav = () => (
-          <TabNav
-            ref={nav$}
-            currentName={currentName.value}
-            editable={props.editable}
-            type={props.type}
-            panes={panes.value}
-            stretch={props.stretch}
-            onTabClick={handleTabClick}
-            onTabRemove={handleTabRemove}
-          />
+```typescript
+orderedChildren.value = getOrderedChildren(
+            vm,
+            childComponentName,
+            children.value,
         )
-    const header = (
-        <div
-          class={[
-            ns.e('header'),
-            isVertical.value && ns.e('header-vertical'),
-            ns.is(props.tabPosition),
-          ]}
-        >
-          {createVNode(PanesSorter, null, {
-            default: tabNav,
-            $stable: true,
-          })}
-          {newButton}
-        </div>
-      )
-    ```
+        const getOrderedChildren = <T>(
+    vm: ComponentInternalInstance,
+    childComponentName: string,
+    children: Record<number, T>,
+): T[] => {
 
-    - inject获取注入的父组件内容
+```
+
+###### 排序组件
+
+源码如下
+
+```typescript
+  const IsolatedRenderer = (props: { render: () => VNode[] }) => {
+        return props.render()
+    }
+
+    // TODO: Refactor `el-description` before converting this to a functional component
+    const ChildrenSorter = defineComponent({
+        setup (_, { slots }) {
+            return () => {
+                sortChildren()
+                return slots.default
+                    ? // Create a new `ReactiveEffect` to ensure `ChildrenSorter` doesn't track any extra dependencies
+                    h(IsolatedRenderer, {
+                        render: slots.default,
+                    })
+                    : null
+            }
+        },
+    })
+```
+
+::: tip
+
+单独声明函数式组件 IsolatedRenderer 并通过它来渲染内容，主要目的是 创建一个独立的响应式作用域 ，避免 ChildrenSorter 组件意外追踪到不必要的依赖。
+
+这是因为 Vue 的组件渲染过程会自动追踪响应式依赖，而 ChildrenSorter 的核心功能是在渲染前执行 sortChildren() 来排序子组件，它本身不应该依赖于其他响应式数据。通过 IsolatedRenderer 封装插槽的渲染逻辑，可以确保 ChildrenSorter 只关注排序逻辑，不被额外的响应式变化触发重渲染，从而提高性能并避免潜在的依赖追踪问题。
+
+:::
+
+:::
+
+### 渲染el-tab-pane组件
+
+```tsx
+   const panels = (
+        <div class={ns.e('content')}>{renderSlot(slots, 'default')}</div>
+      )
+```
+
+- 生成el-tab-pane组件实例，执行el-tab-pane组件的setup钩子函数
+
+- 获取当前实例、获取插槽
+
+- inject获取注入的父组件内容
+
+- 初始化active计算属性表示当前el-tab-pane是否激活(通过判断currentName 和props.name属性是否相等)
+
+- 通过active计算属性来初始化loaded属性表示是否加载
+
+- 初始化shouldBeRender计算属性来判断组件是否应该被渲染（通过!props.lazy || loaded.value || active.value来判断）
+
+- 初始化el-tab-pane组件信息
+
+  ```typescript
+  const pane = reactive({
+    uid: instance.uid,// 组件唯一ID
+    getVnode: () => instance.vnode,// 组件的vnode
+    slots,// 插槽
+    props,// 组件属性
+    paneName,// props.name属性
+    active,//当前el-tab-pane是否激活
+    index,
+    isClosable,
+    isFocusInsidePane,
+  })
+  ```
+
+- 调用registerPane方法注册el-tab-pane组件
+
+  ```typescript
+  tabsRoot.registerPane(pane)
+  ```
+
+- 渲染tab-nav组件
+
+  ```tsx
+  const tabNav = () => (
+        <TabNav
+          ref={nav$}
+          currentName={currentName.value}
+          editable={props.editable}
+          type={props.type}
+          panes={panes.value}
+          stretch={props.stretch}
+          onTabClick={handleTabClick}
+          onTabRemove={handleTabRemove}
+        />
+      )
+  const header = (
+      <div
+        class={[
+          ns.e('header'),
+          isVertical.value && ns.e('header-vertical'),
+          ns.is(props.tabPosition),
+        ]}
+      >
+        {createVNode(PanesSorter, null, {
+          default: tabNav,
+          $stable: true,
+        })}
+        {newButton}
+      </div>
+    )
+  ```
+
+  - inject获取注入的父组件内容

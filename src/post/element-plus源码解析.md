@@ -418,6 +418,10 @@ orderedChildren.value = getOrderedChildren(
 
 :::
 
+#### 如何管理el-tab-pane组件 和el-tab-nav组件
+
+在el-tabs组件中先渲染el-tab-pane组件 ，等el-tab-pane组件注册完后再根据el-tab-pane组件动态生成el-tab-nav组件，所以一开始是el-tab-pane组件在前，el-tab-nav组件在后的，通过css `order:-1`把el-tab-nav组件显示在el-tab-pane组件之前。然后在el-tabs组件根元素的onVnodeMounted钩子函数去交换2个组件DOM元素位置
+
 ### 渲染el-tab-pane组件
 
 ```tsx
@@ -426,9 +430,7 @@ orderedChildren.value = getOrderedChildren(
       )
 ```
 
-- 生成el-tab-pane组件实例，执行el-tab-pane组件的setup钩子函数
-
-- 获取当前实例、获取插槽
+- 获取当前实例、获取插槽（插槽中可自定义el-tab-nav组件的label内容，然后让el-tabs组件动态渲染到el-nav组件的对应插槽内）
 
 - inject获取注入的父组件内容
 
@@ -436,7 +438,9 @@ orderedChildren.value = getOrderedChildren(
 
 - 通过active计算属性来初始化loaded属性表示是否加载
 
-- 初始化shouldBeRender计算属性来判断组件是否应该被渲染（通过!props.lazy || loaded.value || active.value来判断）
+- 初始化shouldBeRender计算属性来判断组件是否应该被渲染(用于懒加载)
+
+  （通过!props.lazy || loaded.value || active.value来控制元素v-if）
 
 - 初始化el-tab-pane组件信息
 
@@ -460,36 +464,59 @@ orderedChildren.value = getOrderedChildren(
   tabsRoot.registerPane(pane)
   ```
 
-- 渲染tab-nav组件
+- 如果用户自定义label插槽的话，还要在组件更新的时候通知el-tab-nav组件更新
 
-  ```tsx
-  const tabNav = () => (
-        <TabNav
-          ref={nav$}
-          currentName={currentName.value}
-          editable={props.editable}
-          type={props.type}
-          panes={panes.value}
-          stretch={props.stretch}
-          onTabClick={handleTabClick}
-          onTabRemove={handleTabRemove}
-        />
-      )
-  const header = (
-      <div
-        class={[
-          ns.e('header'),
-          isVertical.value && ns.e('header-vertical'),
-          ns.is(props.tabPosition),
-        ]}
-      >
-        {createVNode(PanesSorter, null, {
-          default: tabNav,
-          $stable: true,
-        })}
-        {newButton}
-      </div>
-    )
+  ```typescript
+  onBeforeUpdate(() => {
+    if (slots.label) tabsRoot.nav$.value?.scheduleRender()
+  })
   ```
 
-  - inject获取注入的父组件内容
+### 渲染tab-nav组件
+
+```tsx
+const tabNav = () => (
+      <TabNav
+        ref={nav$}
+        currentName={currentName.value}
+        editable={props.editable}
+        type={props.type}
+        panes={panes.value}
+        stretch={props.stretch}
+        onTabClick={handleTabClick}
+        onTabRemove={handleTabRemove}
+      />
+    )
+const header = (
+    <div
+      class={[
+        ns.e('header'),
+        isVertical.value && ns.e('header-vertical'),
+        ns.is(props.tabPosition),
+      ]}
+    >
+      {createVNode(PanesSorter, null, {
+        default: tabNav,
+        $stable: true,
+      })}
+      {newButton}
+    </div>
+  )
+```
+
+::: tip
+
+#### $stable的作用
+
+表示该组件的子树在渲染过程中不会因数据变化而产生副作用（如动态子节点、事件监听等）。这允许 Vue 在虚拟 DOM 的 diff 算法中跳过该组件的深度遍历，提升渲染性能
+
+:::
+
+- inject获取注入的父组件内容
+- 通过遍历渲染的el-tab-pane组件动态渲染出tab-item元素
+- 初始化tabRefsMap响应式变量，用来收集动态渲染出ab-item根元素，通过props传给el-tab-bar组件，让其可以根据元素大小设置动画效果
+
+### 渲染el-tab-bar组件
+
+- 通过遍历渲染el-tab-pane组件获取当前激活的tab-item元素，根据元素渲染的宽高和offsetLeft 来设置tab-bar位置和大小
+

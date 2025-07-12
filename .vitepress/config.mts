@@ -71,7 +71,7 @@ export default defineConfig({
     ],
 
     socialLinks: [
-      { icon: "github", link: "https://zjjaxx.github.io/blog/" },
+      { icon: "github", link: "https://github.com/zjjaxx/blog" },
     ],
   },
 });

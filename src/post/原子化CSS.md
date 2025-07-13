@@ -435,3 +435,91 @@ Tailwind 还为您的主题变量生成常规 CSS 变量，以便您可以以任
 
 配置无卡点，丝滑，同时兼容tailwindcss，还可以设置预设类名
 
+#### unocss+element-plus在实际项目中遇到的问题
+
+在项目中在配置unocss时为了能使用tailwandcss语法，引入了`@unocss/preset-wind4`插件。然后该插件默认会全局重置样式与 tailwind4 对齐，并在内部集成，然后重置的样式会和element-plus组件库样式产生冲突
+
+```css
+*, ::after, ::before, ::backdrop, ::file-selector-button {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+    border: 0 solid;
+}
+```
+
+其中` box-sizing: border-box;`和`  border: 0 solid;都会对组件样式造成影响`  
+
+所以我们需要主动去关闭它
+
+```typescript
+import presetWind4 from '@unocss/preset-wind4'
+import { defineConfig } from 'unocss'
+
+export default defineConfig({
+  presets: [
+    presetWind4({
+      preflights: { 
+        reset: true, 
+      } 
+    }),
+  ],
+})
+```
+
+#### 在项目中把样式rem转为px
+
+```typescript
+import { createRemToPxProcessor } from '@unocss/preset-wind4/utils'
+import { defineConfig, presetWind4 } from 'unocss'
+
+export default defineConfig({
+  presets: [
+    presetWind4({
+      preflights: { 
+        theme: { 
+          process: createRemToPxProcessor(), 
+        } 
+      }, 
+    }),
+  ],
+  postprocess: [createRemToPxProcessor()], 
+})
+```
+
+在 Vite 配置中，`postprocess` 和 `preflights: { theme: { process } }` 虽然都涉及 `createRemToPxProcessor()` 的调用，但它们的 **作用阶段** 和 **应用范围** 存在本质区别。
+
+功能定位差异
+
+|           配置项           |    执行阶段    |          核心作用域          |            典型应用场景            |
+| :------------------------: | :------------: | :--------------------------: | :--------------------------------: |
+|       `postprocess`        | **构建后处理** |   全局资源（CSS/JS/HTML）    |    最终输出文件的单位转换与优化    |
+| `preflights.theme.process` | **主题预处理** | 主题配置（CSS变量/设计系统） | 主题级样式的单位标准化与兼容性处理 |
+
+####  **转换逻辑**
+
+- **`postprocess`**
+  直接操作构建后的代码，例如：
+
+  ```css
+  /* 原始代码 */
+  .container { padding: 1rem; }
+  
+  /* postprocess 转换后 */
+  .container { padding: 16px; }
+  ```
+
+  - 适用于 **多环境适配**（如不同设备像素比）
+
+- **`preflights.theme.process`**
+  修改主题变量定义，例如：
+
+  ```css
+  /* 原始主题变量 */
+  :root { --base-font-size: 16px; }
+  
+  /* 转换后 */
+  :root { --base-font-size: 1rem; }
+  ```
+
+  - 确保 **原子化类**（如 `p-4` → `padding: 1rem`）基于正确单位生成

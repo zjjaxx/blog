@@ -41,6 +41,7 @@ export default defineConfig({
         items: [
           { text: "模块系统", link: "/模块系统" },
           { text: "vue3项目实践", link: "/vue3项目实践" },
+          { text: "tsdown", link: "/tsdown" },
           { text: "react", link: "/react" },  
           { text: "typescript", link: "/typescript" },
           { text: "原子化CSS", link: "/原子化CSS" },

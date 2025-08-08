@@ -464,6 +464,21 @@ this.pluginDriver = new PluginDriver(this, options, options.plugins, this.plugin
 
 ##### 重要方法
 
+###### hookFirstAndGetPlugin
+
+```typescript
+for (const plugin of this.getSortedPlugins(hookName)) { // 遍历插件
+  if (skipped?.has(plugin)) continue;
+  const result = await this.runHook(hookName, parameters, plugin, replaceContext);
+  if (result != null) return [result, plugin];
+}
+return null;
+```
+
+按“first”语义顺序执行插件的异步钩子，返回第一个非空结果以及产生该结果的插件
+
+没有返回null
+
 ###### getSortedPlugins
 
 ```typescript
@@ -740,18 +755,50 @@ this.moduleLoader = new ModuleLoader(this, this.modulesById, this.options, this.
 
   ```typescript
   const resolveIdResult = await resolveId(
-  			unresolvedId,
-  			importer,
-  			this.options.preserveSymlinks,
+  			unresolvedId,// 入口文件
+  			importer,// 导入模块的父模块id；入口模块解析时可能是 undefined。
+  			this.options.preserveSymlinks,//  解析路径时是否保留符号链接
   			this.pluginDriver,
-  			this.resolveId,
+  			this.resolveId,// 模块加载器的解析函数，用于插件中的递归解析，标准化resolveId结果，并补充默认值
   			null,
   			EMPTY_OBJECT,
-  			true,
+  			true, // 是否是入口文件
   			EMPTY_OBJECT,
   			this.options.fs
   		);
   ```
+
+  - 调用resolveIdViaPlugins函数
+
+    ```typescript
+    const pluginResult = await resolveIdViaPlugins(
+     		source,
+     		importer,
+     		pluginDriver,
+     		moduleLoaderResolveId,
+     		skip,
+     		customOptions,
+     		isEntry,
+     		attributes
+     	);
+    ```
+
+    - 在函数中调用插件驱动的hookFirstAndGetPlugin方法
+
+      ```typescript
+      pluginDriver.hookFirstAndGetPlugin(
+      		'resolveId',
+      		[source, importer, { attributes, custom: customOptions, isEntry }],
+      		replaceContext,
+      		skipped
+      	);
+      ```
+
+      
+
+    
+
+    
 
   
 
@@ -771,7 +818,7 @@ this.moduleLoader = new ModuleLoader(this, this.modulesById, this.options, this.
   this.nextChunkNamePriority += unresolvedEntryModules.length;
   ```
 
--  并行加载所有未解析的入口模块
+- 并行加载所有未解析的入口模块
 
   ```typescript
   Promise.all(

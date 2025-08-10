@@ -14,6 +14,12 @@ git config --global http.proxy http://127.0.0.1:7890
  git config --global --unset http.proxy
 ```
 
+### 安装rust
+
+```bash
+brew install rust
+```
+
 ### 依赖安装
 
 新建`.npmrc`文件，设置npm安装代理
@@ -21,12 +27,22 @@ git config --global http.proxy http://127.0.0.1:7890
 ```.npmrc
 registry=https://registry.npmjs.org/
 proxy=http://127.0.0.1:7890/
+https-proxy=http://127.0.0.1:7890/
 ```
 
-### 安装rust
+### 报错处理
 
-```bash
-brew install rust
+```
+sudo npm cache clean --force
+npm i --verbose 查看报错详细过程
+```
+
+### 跳过PUPPETEER安装
+
+在.zshrc中设置
+
+```
+export PUPPETEER_SKIP_DOWNLOAD=1
 ```
 
 ### 打包解析
@@ -327,7 +343,7 @@ function normalizePlugins(plugins: readonly Plugin[], anonymousPrefix: string): 
 }
 ```
 
-#### 生成graph模块依赖图
+#### 初始化graph模块依赖图
 
 #### 执行catchUnfinishedHookActions
 
@@ -347,9 +363,7 @@ await graph.pluginDriver.hookParallel('buildStart', [inputOptions]);
 await graph.build();
 ```
 
-
-
-## 生成graph模块依赖图详解
+## graph模块依赖图详解
 
 ```typescript
 const graph = new Graph(inputOptions, watcher);
@@ -749,6 +763,32 @@ this.moduleLoader = new ModuleLoader(this, this.modulesById, this.options, this.
 
 ##### 重要方法
 
+###### getResolvedIdWithDefaults 标准化resolveId
+
+```typescript
+	private getResolvedIdWithDefaults(
+		resolvedId: NormalizedResolveIdWithoutDefaults | null,
+		attributes: Record<string, string>
+	): ResolvedId | null {
+		if (!resolvedId) {
+			return null;
+		}
+		const external = resolvedId.external || false;
+		return {
+			attributes: resolvedId.attributes || attributes, // 导入属性
+			external, // 外部模块标识
+			id: resolvedId.id, // 模块绝对路径
+			meta: resolvedId.meta || {}, // 元数据
+			moduleSideEffects:
+				resolvedId.moduleSideEffects ?? this.hasModuleSideEffects(resolvedId.id, !!external), // 模块副作用,默认返回true
+			resolvedBy: resolvedId.resolvedBy ?? 'rollup',// 解析来源,如果是插件则用的是插件名称name
+			syntheticNamedExports: resolvedId.syntheticNamedExports ?? false // 合成命名导出
+		};
+	}
+```
+
+
+
 ###### loadEntryModule
 
 - resolve文件路径
@@ -783,24 +823,78 @@ this.moduleLoader = new ModuleLoader(this, this.modulesById, this.options, this.
      	);
     ```
 
-    - 在函数中调用插件驱动的hookFirstAndGetPlugin方法
+    - 在函数中调用插件驱动的hookFirstAndGetPlugin方法，
 
+      按“first”语义顺序执行插件的异步钩子，返回第一个非空结果以及产生该结果的插件
+      
       ```typescript
-      pluginDriver.hookFirstAndGetPlugin(
+      return pluginDriver.(
       		'resolveId',
       		[source, importer, { attributes, custom: customOptions, isEntry }],
       		replaceContext,
       		skipped
       	);
       ```
-
       
-
     
 
-    
+  - 如果结果不为null,则返回标准格式
 
+    ```
+    {
+        id: resolveIdResult,
+        resolvedBy: plugin.name
+    }
+    ```
   
+  - 如果不是入口模块,并且不是相对路径和绝对路径，则不处理，`return null`
+  
+  - 默认处理模块路径
+  
+    - 赋值importer 
+  
+      ```typescript
+      	importer ? resolve(dirname(importer), source) : resolve(source),
+      ```
+  
+    - 确保文件名在目录中确实存在，返回文件的绝对路径
+  
+      ```typescript
+      return (
+      		(await findFile(file, preserveSymlinks, fs)) ??
+      		(await findFile(file + '.mjs', preserveSymlinks, fs)) ??
+      		(await findFile(file + '.js', preserveSymlinks, fs))
+      	);
+      ```
+  
+      ```typescript
+      async function findFile(
+      	file: string,
+      	preserveSymlinks: boolean,
+      	fs: RollupFsModule
+      ): Promise<string | undefined> {
+      	try {
+      		const stats = await fs.lstat(file); // 获取文件状态
+      		if (!preserveSymlinks && stats.isSymbolicLink()) 
+      			return await findFile(await fs.realpath(file), preserveSymlinks, fs); 
+          // 当 preserveSymlinks = false 时，跟随符号链接,使用 fs.realpath() 获取符号链接指向的真实路径,递归调用 findFile 继续查找真实文件
+      		if ((preserveSymlinks && stats.isSymbolicLink()) || stats.isFile()) {
+      			// check case
+      			const name = basename(file);
+      			const files = await fs.readdir(dirname(file));
+      			
+      			if (files.includes(name)) return file;
+      		}
+      	} catch {
+      		// suppress
+      	}
+      }
+      ```
+
+- 如果`resolveIdResult===false` 或者有`external为true`，则不处理
+- 调用getResolvedIdWithDefaults方法获取标准化的ResolvedId
+
+- 调用fetchModule方法
 
 ###### addEntryModules
 
@@ -877,8 +971,4 @@ this.fileOperationQueue = new Queue(options.maxParallelFileOps);
 ```
 
 一个用于控制并发任务执行的队列，根据maxParallelFileOps数量，开启多个while循环，每个循环中顺序执行异步任务
-
-## resolveId详解
-
-### resolveIdViaPlugins
 

@@ -394,6 +394,56 @@ const graph = new Graph(inputOptions, watcher);
 	declare private pluginCache?: Record<string, SerializablePluginCache>; // 插件缓存，存储插件的序列化缓存数据
 ```
 
+### 重要方法
+
+#### generateModuleGraph
+
+##### normalizeEntryModules标准化模块
+
+```typescript
+function normalizeEntryModules(
+	entryModules: readonly string[] | Record<string, string>
+): UnresolvedModule[] {
+	if (Array.isArray(entryModules)) {
+		return entryModules.map(id => ({
+			fileName: null, // 最终输出文件的名称
+			id, // 模块的唯一标识符，通常是文件路径
+			implicitlyLoadedAfter: [],// 隐式加载顺序，表示此模块应该在哪些模块之后加载
+			importer: undefined,// 导入此模块的父模块
+			name: null // 模块的名称，用于生成输出文件名
+		}));
+	}
+	return Object.entries(entryModules).map(([name, id]) => ({
+		fileName: null,
+		id,
+		implicitlyLoadedAfter: [],
+		importer: undefined,
+		name
+	}));
+}
+```
+
+返回标准格式
+
+##### 添加入口模块
+
+```typescript
+({ entryModules: this.entryModules, implicitEntryModules: this.implicitEntryModules } =
+  await this.moduleLoader.addEntryModules(normalizeEntryModules(this.options.input), true));
+```
+
+可以看到调用的是moduleLoader实例的addEntryModules方法
+
+#### build
+
+##### 生成模块依赖图
+
+```typescript
+await this.generateModuleGraph();
+```
+
+
+
 ### 执行构造函数
 
 #### 新建插件驱动实例
@@ -425,6 +475,165 @@ this.pluginDriver = new PluginDriver(this, options, options.plugins, this.plugin
 	};// 编译后的插件过滤器缓存，提高过滤性能
 
 ```
+
+##### 重要方法
+
+###### hookFirstAndGetPlugin
+
+```typescript
+for (const plugin of this.getSortedPlugins(hookName)) { // 遍历插件
+  if (skipped?.has(plugin)) continue;
+  const result = await this.runHook(hookName, parameters, plugin, replaceContext);
+  if (result != null) return [result, plugin];
+}
+return null;
+```
+
+按“first”语义顺序执行插件的异步钩子，返回第一个非空结果以及产生该结果的插件
+
+没有返回null
+
+###### getSortedPlugins
+
+```typescript
+private getSortedPlugins(
+		hookName: keyof FunctionPluginHooks | AddonHooks,
+		validateHandler?: (handler: unknown, hookName: string, plugin: Plugin) => void
+	): Plugin[] {
+		return getOrCreate(this.sortedPlugins, hookName, () =>
+			getSortedValidatedPlugins(hookName, this.plugins, validateHandler)
+		);
+	}
+```
+
+根据钩子名称对插件进行归类排序
+
+###### runHook
+
+```typescript
+	private runHook<H extends AsyncPluginHooks | AddonHooks>(
+		hookName: H,
+		parameters: unknown[],
+		plugin: Plugin,
+		replaceContext?: ReplaceContext | null
+	): Promise<unknown> {
+		// We always filter for plugins that support the hook before running it
+		const hook = plugin[hookName];
+		const handler = typeof hook === 'object' ? hook.handler : hook;
+
+		if (typeof hook === 'object' && 'filter' in hook && hook.filter) {
+			if (hookName === 'transform') {
+				const filter = hook.filter as HookFilter;
+				const hookParameters = parameters as Parameters<FunctionPluginHooks['transform']>;
+				const compiledFilter = getOrCreate(this.compiledPluginFilters.transformFilter, filter, () =>
+					createFilterForTransform(filter.id, filter.code)
+				);
+				if (compiledFilter && !compiledFilter(hookParameters[1], hookParameters[0])) {
+					return Promise.resolve();
+				}
+			} else if (hookName === 'resolveId' || hookName === 'load') {
+				const filter = hook.filter;
+				const hookParameters = parameters as Parameters<FunctionPluginHooks['load' | 'resolveId']>;
+				const compiledFilter = getOrCreate(this.compiledPluginFilters.idOnlyFilter, filter, () =>
+					createFilterForId(filter.id)
+				);
+				if (compiledFilter && !compiledFilter(hookParameters[0])) {
+					return Promise.resolve();
+				}
+			}
+		}
+
+		let context = this.pluginContexts.get(plugin)!;
+		if (replaceContext) {
+			context = replaceContext(context, plugin);
+		}
+
+		let action: [string, string, Parameters<any>] | null = null;
+		return Promise.resolve()
+			.then(() => {
+				if (typeof handler !== 'function') {
+					return handler;
+				}
+				// eslint-disable-next-line @typescript-eslint/no-unsafe-function-type
+				const hookResult = (handler as Function).apply(context, parameters);
+
+				if (!hookResult?.then) {
+					// short circuit for non-thenables and non-Promises
+					return hookResult;
+				}
+
+				// Track pending hook actions to properly error out when
+				// unfulfilled promises cause rollup to abruptly and confusingly
+				// exit with a successful 0 return code but without producing any
+				// output, errors or warnings.
+				action = [plugin.name, hookName, parameters];
+				this.unfulfilledActions.add(action);
+
+				// Although it would be more elegant to just return hookResult here
+				// and put the .then() handler just above the .catch() handler below,
+				// doing so would subtly change the defacto async event dispatch order
+				// which at least one test and some plugins in the wild may depend on.
+				return Promise.resolve(hookResult).then(result => {
+					// action was fulfilled
+					this.unfulfilledActions.delete(action!);
+					return result;
+				});
+			})
+			.catch(error_ => {
+				if (action !== null) {
+					// action considered to be fulfilled since error being handled
+					this.unfulfilledActions.delete(action);
+				}
+				return error(logPluginError(error_, plugin.name, { hook: hookName }));
+			});
+	}
+
+```
+
+- 主要功能是从插件中获取钩子函数
+
+- 检查`transform`、`resolveId`、`load`钩子是否有过滤器，如果有的话直接结束
+
+- 从`pluginContexts`取出插件上下文
+
+- 把钩子函数放到微任务队列中，在微任务中执行钩子函数
+
+  - 如果钩子函数是个同步函数，则返回结果
+
+  - 如果钩子函数是异步函数，则用promise.resolve包裹返回的promise
+
+    ::: tip
+
+    虽然在这里直接返回hookResult会更优雅，
+    并且将.then()处理程序放在下面.catch()处理程序的上方，
+    但这样做会微妙地改变事实上的异步事件调度顺序，
+    至少有一个测试和一些实际插件可能依赖于此。
+
+    :::
+
+###### hookParallel 并行执行异步任务
+
+```typescript
+async hookParallel<H extends AsyncPluginHooks & ParallelPluginHooks>(
+		hookName: H,
+		parameters: Parameters<FunctionPluginHooks[H]>,
+		replaceContext?: ReplaceContext
+	): Promise<void> {
+		const parallelPromises: Promise<unknown>[] = [];
+		for (const plugin of this.getSortedPlugins(hookName)) {
+			if ((plugin[hookName] as { sequential?: boolean }).sequential) {
+				await Promise.all(parallelPromises);
+				parallelPromises.length = 0;
+				await this.runHook(hookName, parameters, plugin, replaceContext);
+			} else {
+				parallelPromises.push(this.runHook(hookName, parameters, plugin, replaceContext));
+			}
+		}
+		await Promise.all(parallelPromises);
+	}
+```
+
+默认并行执行插件的钩子函数，通过sequential配置可以支持顺序和并行两种模式（***钩子函数可以使同步或则异步函数***）
 
 ##### 执行构造函数
 
@@ -533,10 +742,26 @@ export function getPluginContext(
 }
 ```
 
+#### 新建模块加载器
 
+```typescript
+this.moduleLoader = new ModuleLoader(this, this.modulesById, this.options, this.pluginDriver);
+```
 
+##### 初始化类属性
 
+```typescript
+	private readonly hasModuleSideEffects: HasModuleSideEffects;// 判断模块是否有副作用的函数
+	private readonly implicitEntryModules = new Set<Module>();// 隐式入口模块集合（通过动态导入发现的模块）
+	private readonly indexedEntryModules: { index: number; module: Module }[] = [];// 带索引的入口模块数组，保持入口模块的顺序
+	private latestLoadModulesPromise: Promise<unknown> = Promise.resolve();// 最新的模块加载Promise，用于协调异步加载
+	private readonly moduleLoadPromises = new Map<Module, LoadModulePromise>();// 模块加载Promise的映射，避免重复加载
+	private readonly modulesWithLoadedDependencies = new Set<Module>();// 依赖已加载完成的模块集合
+	private nextChunkNamePriority = 0;// 下一个块名称的优先级，用于生成唯一的块名
+	private nextEntryModuleIndex = 0;// 下一个入口模块的索引，用于分配入口模块的顺序
+```
 
+##### 重要方法
 
 ###### getResolvedIdWithDefaults 标准化resolveId
 
@@ -566,8 +791,24 @@ export function getPluginContext(
 
 ###### loadEntryModule
 
+- resolve文件路径
 
+  ```typescript
+  const resolveIdResult = await resolveId(
+  			unresolvedId,// 入口文件
+  			importer,// 导入模块的父模块id；入口模块解析时可能是 undefined。
+  			this.options.preserveSymlinks,//  解析路径时是否保留符号链接
+  			this.pluginDriver,
+  			this.resolveId,// 模块加载器的解析函数，用于插件中的递归解析，标准化resolveId结果，并补充默认值
+  			null,
+  			EMPTY_OBJECT,
+  			true, // 是否是入口文件
+  			EMPTY_OBJECT,
+  			this.options.fs
+  		);
+  ```
 
+  - 调用resolveIdViaPlugins函数
 
     ```typescript
     const pluginResult = await resolveIdViaPlugins(

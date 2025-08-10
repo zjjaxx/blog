@@ -523,3 +523,85 @@ export default defineConfig({
   ```
 
   - 确保 **原子化类**（如 `p-4` → `padding: 1rem`）基于正确单位生成
+
+#### pipeline 和 filesystem 作用
+
+- pipeline：扫描构建管道中的内容，适合动态 class、依赖包等。
+
+- filesystem：扫描磁盘原始文件，适合源码、静态文件、未被构建工具处理的内容。
+
+| 场景                     | pipeline            | filesystem |
+| :----------------------- | :------------------ | :--------- |
+| 扫描 Vite 处理过的源码   | ✅                   | ✅          |
+| 扫描 node_modules 依赖包 | ✅（需被 Vite 处理） | ✅          |
+| 扫描动态生成 class       | ✅                   | ❌          |
+| 扫描纯文本/非构建文件    | ❌                   | ✅          |
+
+```typescript
+import { defineConfig } from 'unocss'
+import presetWind4 from '@unocss/preset-wind4'
+
+export default defineConfig({
+  content: {
+    pipeline: { include: [/\.(vue|svelte|[jt]sx|vine.ts|mdx?|astro|elm|php|phtml|html)($|\?)/, "node_modules/*依赖包名*/dist/**/*.{js,ts}"] },
+    filesystem: [
+      "./src/**/*.{vue,js,ts,jsx,tsx}",
+      "./index.html",
+      "node_modules/*依赖包名*/dist/**/*.{vue,js,ts,jsx,tsx,cjs,cts}"
+    ]
+  },
+  presets: [
+    presetWind4({
+      preflights: {
+        reset: false,
+      },
+    }),
+  ],
+})
+
+```
+
+
+
+::: tip
+
+同时配置 pipeline 和 filesystem 能最大化保证 unocss 能扫描到所有 class。下面详细解释原因：
+
+pipeline 会扫描所有被 Vite/webpack 构建管道处理过的文件（包括依赖、源码等）。只要你的依赖被 Vite 处理并打包，pipeline 是可以扫描到的。
+
+真实项目中常见的“漏扫”场景：
+
+- 某些 node_modules 里的文件（比如 .js、.ts），如果没有被直接 import 到你的项目，Vite 可能不会处理它们，pipeline 就扫描不到。比如你只 import 了 依赖包的入口，theme 里的某些文件没被 import，Vite 不会处理它们。
+
+你依赖包的 dist 目录同时被 pipeline 和 filesystem 扫描，防止漏扫。
+
+:::
+
+#### 限制
+
+由于 UnoCSS**在构建时**生效，这意味着只有静态呈现的实用程序才会生成并发送到您的应用。动态使用或运行时从外部资源获取的实用程序可能**无法**被检测或应用。
+
+解决动态构造实用程序限制的另一种方法是使用一个**静态**列出所有组合的对象。例如，如果你想要这样：
+
+```vue
+<div class="text-${color} border-${color}"></div>
+<!-- this won't work! -->
+```
+
+您可以创建一个列出所有组合的对象（假设您知道`color`想要使用的任何可能值）
+
+```typescript
+// Since they are static, UnoCSS will able to extract them on build time
+const classes = {
+  red: 'text-red border-red',
+  green: 'text-green border-green',
+  blue: 'text-blue border-blue',
+}
+```
+
+然后在你的模板中使用它：
+
+```vue
+<div class="${classes[color]}"></div>
+```
+

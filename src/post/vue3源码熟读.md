@@ -231,6 +231,28 @@ createRenderer(rendererOptions))
 
 ## 渲染系统
 
+### onMounted钩子的执行时机
+
+```vue
+<template>
+  <div>
+    <CTAnchor>
+      <CTAnchorLink href="#anchor1">锚点1</CTAnchorLink>
+    </CTAnchor>
+    <div class="mt-2000px mb-600px">
+      <h2 id="anchor1">锚点1</h2>
+      <p>这是锚点1的内容</p>
+    </div>
+  </div>
+</template>
+```
+
+- 问题：在`CTAnchor`组件的`onMounted`的回调中就能访问到`h2 id="anchor1"`这个真实的DOM元素，为什么
+
+  Vue的渲染是同步且递归的，在调用onMounted之前，整个页面DOM已创建完成，
+
+  在渲染过程中，通过queuePostRenderEffect将钩子放入后置队列，在下一个微任务中执行：通过flushPostFlushCbs()执行所有后置渲染回调
+
 ### vue diff算法
 
 #### 面试回答

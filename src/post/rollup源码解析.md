@@ -244,7 +244,7 @@ export function getSortedValidatedPlugins(
 }
 ```
 
-###### 顺序执行插件的options钩子来合并inputOptions值
+###### [顺序执行插件的options钩子来合并inputOptions值](https://cn.rollupjs.org/plugin-development/#options)
 
 [sequential原理](https://cn.rollupjs.org/plugin-development/#build-hooks)
 
@@ -349,7 +349,7 @@ function normalizePlugins(plugins: readonly Plugin[], anonymousPrefix: string): 
 
 管理进程退出时的插件钩子检测，提供了更好的错误诊断信息
 
-#### 执行插件的`buildStart`钩子
+#### [执行插件的`buildStart`钩子](https://cn.rollupjs.org/plugin-development/#buildstart)
 
 ```typescript
 await graph.pluginDriver.hookParallel('buildStart', [inputOptions]);
@@ -398,7 +398,7 @@ const graph = new Graph(inputOptions, watcher);
 
 #### generateModuleGraph
 
-##### normalizeEntryModules标准化模块
+##### normalizeEntryModules标准化入口模块
 
 ```typescript
 function normalizeEntryModules(
@@ -477,6 +477,23 @@ this.pluginDriver = new PluginDriver(this, options, options.plugins, this.plugin
 ```
 
 ##### 重要方法
+
+###### hookReduceArg0 顺序执行和处理插件异步钩子和返回值
+
+```typescript
+let promise = Promise.resolve(argument0);
+		for (const plugin of this.getSortedPlugins(hookName)) {
+			promise = promise.then(argument0 =>
+				this.runHook(
+					hookName,
+					[argument0, ...rest] as Parameters<FunctionPluginHooks[H]>,
+					plugin,
+					replaceContext
+				).then(result => reduce.call(this.pluginContexts.get(plugin), argument0, result, plugin))
+			);
+		}
+		return promise;
+```
 
 ###### hookFirstAndGetPlugin
 
@@ -685,6 +702,16 @@ this.setOutputBundle = this.fileEmitter.setOutputBundle.bind(this.fileEmitter);
 
 ###### 为每个插件生成一个插件上下文，插件上下文包含了插件在 Rollup 构建过程中需要的所有方法和属性。
 
+::: tip
+
+在插件钩子中，我们可以通过this获取插件上下文
+
+- resolve
+
+  跳过调用插件，执行剩余其它插件的resolveId钩子获取文件绝对路径
+
+:::
+
 ```typescript
 this.plugins = [...(basePluginDriver ? basePluginDriver.plugins : []), ...userPlugins];
 const existingPluginNames = new Set<string>();
@@ -736,11 +763,13 @@ export function getPluginContext(
 				attributes || EMPTY_OBJECT,
 				skipSelf ? [{ importer, plugin, source }] : null
 			);
-		}, // 解析模块ID 和path.resolve类似作用
+		}, // 解析模块ID 
 		setAssetSource: fileEmitter.setAssetSource, // 设置资源文件内容
 	};
 }
 ```
+
+
 
 #### 新建模块加载器
 
@@ -823,20 +852,18 @@ this.moduleLoader = new ModuleLoader(this, this.modulesById, this.options, this.
      	);
     ```
 
-    - 在函数中调用插件驱动的hookFirstAndGetPlugin方法，
+    - [在函数中调用插件驱动的hookFirstAndGetPlugin方法](https://cn.rollupjs.org/plugin-development/#resolveid)，
 
       按“first”语义顺序执行插件的异步钩子，返回第一个非空结果以及产生该结果的插件
-      
+
       ```typescript
-      return pluginDriver.(
+      return pluginDriver.hookFirstAndGetPlugin(
       		'resolveId',
       		[source, importer, { attributes, custom: customOptions, isEntry }],
       		replaceContext,
       		skipped
       	);
       ```
-      
-    
 
   - 如果结果不为null,则返回标准格式
 
@@ -846,19 +873,19 @@ this.moduleLoader = new ModuleLoader(this, this.modulesById, this.options, this.
         resolvedBy: plugin.name
     }
     ```
-  
+
   - 如果不是入口模块,并且不是相对路径和绝对路径，则不处理，`return null`
-  
+
   - 默认处理模块路径
-  
-    - 赋值importer 
-  
+
+    - 获取入口文件路径，赋值importer 
+
       ```typescript
       	importer ? resolve(dirname(importer), source) : resolve(source),
       ```
-  
+
     - 确保文件名在目录中确实存在，返回文件的绝对路径
-  
+
       ```typescript
       return (
       		(await findFile(file, preserveSymlinks, fs)) ??
@@ -866,7 +893,7 @@ this.moduleLoader = new ModuleLoader(this, this.modulesById, this.options, this.
       		(await findFile(file + '.js', preserveSymlinks, fs))
       	);
       ```
-  
+
       ```typescript
       async function findFile(
       	file: string,
@@ -892,6 +919,7 @@ this.moduleLoader = new ModuleLoader(this, this.modulesById, this.options, this.
       ```
 
 - 如果`resolveIdResult===false` 或者有`external为true`，则不处理
+
 - 调用getResolvedIdWithDefaults方法获取标准化的ResolvedId
 
 - 调用fetchModule方法
@@ -954,6 +982,173 @@ this.moduleLoader = new ModuleLoader(this, this.modulesById, this.options, this.
         );
   ```
 
+###### fetchModule
+
+- 尝试从modulesById获取该模块
+
+  ```typescript
+  const existingModule = this.modulesById.get(id);
+  ```
+
+- 不存在则新建模块
+
+  ```typescript
+  	const module = new Module(
+  			this.graph,
+  			id,
+  			this.options,
+  			isEntry,
+  			moduleSideEffects,
+  			syntheticNamedExports,
+  			meta,
+  			attributes
+  		);
+  ```
+
+- 存储模块到map对象中
+
+  ::: tip
+
+  modulesById属性在graph对象中
+
+  :::
+
+  ```typescript
+  this.modulesById.set(id, module);
+  ```
+
+- 调用addModuleSource方法加载模块
+
+  ```typescript
+  const loadPromise: LoadModulePromise = this.addModuleSource(id, importer, module).then(() => [
+      this.getResolveStaticDependencyPromises(module),
+      this.getResolveDynamicImportPromises(module),
+      loadAndResolveDependenciesPromise
+    ]);
+  ```
+
+###### addModuleSource
+
+- [调用插件驱动hookFirstAndGetPlugin方法，按“first”语义顺序执行插件的`load`异步钩子](https://cn.rollupjs.org/plugin-development/#load)，返回第一个非空结果,如果返回null,则`fs.readFile`读取文件
+
+  ```typescript
+  let source: LoadResult;
+  try {
+    source = await this.graph.fileOperationQueue.run(async () => {
+      const content = await this.pluginDriver.hookFirst('load', [id]);
+      if (content !== null) return content;
+      this.graph.watchFiles[id] = true;
+      return (await this.options.fs.readFile(id, { encoding: 'utf8' })) as string;
+    });
+  } catch (error_: any) {
+    let message = `Could not load ${id}`;
+    if (importer) message += ` (imported by ${relativeId(importer)})`;
+    message += `: ${error_.message}`;
+    error_.message = message;
+    throw error_;
+  }
+  ```
+
+- 标准化返回结果
+
+  ```typescript
+  { code: source }
+  ```
+
+- 如果是自定义load返回结果有其它返回参数，则更新*module*的info属性
+
+  ```typescript
+  module.updateOptions(sourceDescription);
+  ```
+
+- 调用transform函数转化模块源码
+
+  [顺序执行和处理插件异步`transform`钩子和返回值](https://cn.rollupjs.org/plugin-development/#transform)
+
+  ```typescript
+  const id = module.id;
+  const sourcemapChain: DecodedSourceMapOrMissing[] = [];
+  
+  let originalSourcemap = source.map === null ? null : decodedSourcemap(source.map);
+  const originalCode = source.code;
+  let ast = source.ast;
+  const transformDependencies: string[] = [];
+  const emittedFiles: EmittedFile[] = [];
+  let customTransformCache = false;
+  const useCustomTransformCache = () => (customTransformCache = true);
+  let pluginName = '';
+  let currentSource = source.code;
+  
+  let code: string;
+  
+  try {
+    code = await pluginDriver.hookReduceArg0(
+      'transform',
+      [currentSource, id],
+      transformReducer,
+      (pluginContext, plugin): TransformPluginContext => {
+        pluginName = plugin.name;
+        return {
+          ...pluginContext,
+          addWatchFile(id: string) {
+            transformDependencies.push(id);
+            pluginContext.addWatchFile(id);
+          },
+          cache: customTransformCache
+            ? pluginContext.cache
+            : getTrackedPluginCache(pluginContext.cache, useCustomTransformCache),
+          debug: getLogHandler(pluginContext.debug),
+          emitFile(emittedFile: EmittedFile) {
+            emittedFiles.push(emittedFile);
+            return pluginDriver.emitFile(emittedFile);
+          },
+          error(
+            error_: RollupError | string,
+            pos?: number | { column: number; line: number }
+          ): never {
+            if (typeof error_ === 'string') error_ = { message: error_ };
+            if (pos) augmentCodeLocation(error_, pos, currentSource, id);
+            error_.id = id;
+            error_.hook = 'transform';
+            return pluginContext.error(error_);
+          },
+          getCombinedSourcemap() {
+            const combinedMap = collapseSourcemap(
+              id,
+              originalCode,
+              originalSourcemap,
+              sourcemapChain,
+              log
+            );
+            if (!combinedMap) {
+              const magicString = new MagicString(originalCode);
+              return magicString.generateMap({ hires: true, includeContent: true, source: id });
+            }
+            if (originalSourcemap !== combinedMap) {
+              originalSourcemap = combinedMap;
+              sourcemapChain.length = 0;
+            }
+            return new SourceMap({
+              ...combinedMap,
+              file: null as never,
+              sourcesContent: combinedMap.sourcesContent!
+            });
+          },
+          info: getLogHandler(pluginContext.info),
+          setAssetSource() {
+            return this.error(logInvalidSetAssetSourceCall());
+          },
+          warn: getLogHandler(pluginContext.warn)
+        };
+      }
+    );
+  } catch (error_: any) {
+    return error(logPluginError(error_, pluginName, { hook: 'transform', id }));
+  }
+  ```
+
+  
+
 ##### 执行构造函数
 
 ```typescript
@@ -971,4 +1166,177 @@ this.fileOperationQueue = new Queue(options.maxParallelFileOps);
 ```
 
 一个用于控制并发任务执行的队列，根据maxParallelFileOps数量，开启多个while循环，每个循环中顺序执行异步任务
+
+## 模块详解
+
+### 初始化类属性
+
+```typescript
+readonly alternativeReexportModules = new Map<Variable, Module>(); // 存储变量的替代重新导出模块
+readonly chunkFileNames = new Set<string>(); // 存储模块所属的所有代码块文件名,该模块的代码出现在这几个文件中
+chunkNames: {
+  isUserDefined: boolean;
+  name: string;
+  priority: number;
+}[] = []; // 存储模块的块名称配置
+readonly cycles = new Set<symbol>(); // 检测模块间的循环依赖
+readonly dependencies = new Set<Module | ExternalModule>(); // 存储模块的静态依赖
+readonly dynamicDependencies = new Set<Module | ExternalModule>();// 存储模块的动态依赖
+readonly dynamicImporters: string[] = []; // 存储通过动态导入引用此模块的模块ID列表
+readonly dynamicImports: DynamicImport[] = []; // 存储模块中的动态导入语句
+excludeFromSourcemap: boolean; // 控制模块是否从 sourcemap 中排除
+execIndex = Infinity; // 模块在构建过程中的执行顺序索引
+hasTreeShakingPassStarted = false; // 标记模块是否已开始摇树优化
+readonly implicitlyLoadedAfter = new Set<Module>(); // 存储此模块应该在哪些模块之后隐式加载
+readonly implicitlyLoadedBefore = new Set<Module>(); // 存储此模块应该在哪些模块之前隐式加载
+readonly importDescriptions = new Map<string, ImportDescription>(); // 存储导入语句的详细描述
+readonly importMetas: MetaProperty[] = []; // 存储模块中的 import.meta 使用
+importedFromNotTreeshaken = false; // 标记模块是否从未进行摇树优化的模块导入
+shebang: undefined | string; // 存储文件开头的 shebang 行
+readonly importers: string[] = []; // 导入此模块的模块ID列表
+readonly includedDynamicImporters: Module[] = []; // 存储包含此模块的动态导入者模块实例
+readonly includedDirectTopLevelAwaitingDynamicImporters = new Set<Module>(); // 存储直接使用顶层 await 等待动态导入的模块
+readonly includedImports = new Set<Variable>(); // 存储已被包含的导入变量
+readonly info: ModuleInfo; // 存储模块的元信息
+isExecuted = false; // 标记模块是否已执行
+isUserDefinedEntryPoint = false; // 标记是否为用户定义的入口点
+declare magicString: MagicString; // 用于代码操作的字符串库
+declare namespace: NamespaceVariable; // 模块的命名空间变量
+needsExportShim = false; // 标记是否需要导出垫片
+declare originalCode: string; // 存储模块的原始源代码
+declare originalSourcemap: ExistingDecodedSourceMap | null; // 存储模块的原始 sourcemap
+preserveSignature: PreserveEntrySignaturesOption; // 控制入口模块导出签名的保留方式
+declare resolvedIds: ResolvedIdMap; // 存储模块中导入的解析结果
+declare scope: ModuleScope; // 模块的作用域
+readonly sideEffectDependenciesByVariable = new Map<Variable, Set<Module>>(); // 存储变量到副作用依赖模块的映射
+declare sourcemapChain: DecodedSourceMapOrMissing[]; // 存储 sourcemap 转换链
+readonly sourcesWithAttributes = new Map<string, Record<string, string>>(); // 存储带属性的导入源
+declare transformFiles?: EmittedFile[]; // 存储插件生成的文件
+
+private allExportNames: Set<string> | null = null; // 缓存所有导出名称，避免重复计算
+private allExportsIncluded = false; // 标记是否所有导出都被包含
+private ast: Program | null = null; // 存储解析后的 JavaScript AST
+declare private astContext: AstContext; // AST 操作的上下文
+private readonly context: string; // 模块的上下文信息
+declare private customTransformCache: boolean; // 标记是否有自定义转换缓存
+private readonly exportAllModules: (Module | ExternalModule)[] = []; // 存储 export * 的模块列表
+private readonly exportAllSources = new Set<string>(); 
+private exportNamesByVariable: Map<Variable, string[]> | null = null;// 缓存变量到导出名称的映射
+private readonly exportShimVariable = new ExportShimVariable(this);// 导出垫片变量
+private readonly exports = new Map<string, ExportDescription>(); // 存储模块的导出信息
+private readonly namespaceReexportsByName = new Map<
+  string,
+  [variable: Variable | null, options?: VariableOptions]
+>(); // 存储命名空间重新导出
+private readonly reexportDescriptions = new Map<string, ReexportDescription>(); // 存储重新导出的描述
+
+private relevantDependencies: Set<Module | ExternalModule> | null = null; // 缓存相关依赖，避免重复计算
+private readonly syntheticExports = new Map<string, SyntheticNamedExportVariable>(); // 存储合成导出（插件生成）
+private syntheticNamespace: Variable | null | undefined = null; // 合成命名空间
+private transformDependencies: string[] = []; // 存储转换依赖
+private transitiveReexports: string[] | null = null; // 缓存传递性重新导出
+```
+
+### 构造函数
+
+#### 构建模块信息对象
+
+创建模块的元信息对象，提供统一的查询接口
+
+```typescript
+const module = this;
+const {
+			dynamicImports,
+			dynamicImporters,
+			exportAllSources,
+			exports,
+			implicitlyLoadedAfter,
+			implicitlyLoadedBefore,
+			importers,
+			reexportDescriptions,
+			sourcesWithAttributes
+		} = this;
+
+		this.info = {
+			ast: null,
+			attributes,
+			code: null,
+			get dynamicallyImportedIdResolutions() {
+				return dynamicImports
+					.map(({ argument }) => typeof argument === 'string' && module.resolvedIds[argument])
+					.filter(Boolean) as ResolvedId[];
+			},
+			get dynamicallyImportedIds() {
+				// We cannot use this.dynamicDependencies because this is needed before
+				// dynamicDependencies are populated
+				return dynamicImports.map(({ id }) => id).filter((id): id is string => id != null);
+			},
+			get dynamicImporters() {
+				return dynamicImporters.sort();
+			},
+			get exportedBindings() {
+				const exportBindings: Record<string, string[]> = { '.': [...exports.keys()] };
+
+				for (const [name, { source }] of reexportDescriptions) {
+					(exportBindings[source] ??= []).push(name);
+				}
+
+				for (const source of exportAllSources) {
+					(exportBindings[source] ??= []).push('*');
+				}
+
+				return exportBindings;
+			},
+			get exports() {
+				return [
+					...exports.keys(),
+					...reexportDescriptions.keys(),
+					...[...exportAllSources].map(() => '*')
+				];
+			},
+			get hasDefaultExport() {
+				// This information is only valid after parsing
+				if (!module.ast) {
+					return null;
+				}
+				return module.exports.has('default') || reexportDescriptions.has('default');
+			},
+			id,
+			get implicitlyLoadedAfterOneOf() {
+				return Array.from(implicitlyLoadedAfter, getId).sort();
+			},
+			get implicitlyLoadedBefore() {
+				return Array.from(implicitlyLoadedBefore, getId).sort();
+			},
+			get importedIdResolutions() {
+				return Array.from(
+					sourcesWithAttributes.keys(),
+					source => module.resolvedIds[source]
+				).filter(Boolean);
+			},
+			get importedIds() {
+				// We cannot use this.dependencies because this is needed before
+				// dependencies are populated
+
+				return Array.from(
+					sourcesWithAttributes.keys(),
+					source => module.resolvedIds[source]?.id
+				).filter(Boolean);
+			},
+			get importers() {
+				return importers.sort();
+			},
+			isEntry,
+			isExternal: false,
+			get isIncluded() {
+				if (graph.phase !== BuildPhase.GENERATE) {
+					return null;
+				}
+				return module.isIncluded();
+			},
+			meta: { ...meta },
+			moduleSideEffects,
+			syntheticNamedExports
+		};
+```
 

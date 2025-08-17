@@ -45,6 +45,7 @@ export default defineConfig({
           { text: "tsdown", link: "/tsdown" },
           { text: "react", link: "/react" },  
           { text: "typescript", link: "/typescript" },
+          { text: "ast", link: "/ast" },
           { text: "原子化CSS", link: "/原子化CSS" },
           { text: "算法", link: "/算法" },
           { text: "gsap", link: "/gsap" },

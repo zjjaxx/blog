@@ -704,11 +704,9 @@ this.setOutputBundle = this.fileEmitter.setOutputBundle.bind(this.fileEmitter);
 
 ::: tip
 
-在插件钩子中，我们可以通过this获取插件上下文
+在插件钩子中，我们可以通过this获取插件上下文，执行resolve、load等插件钩子
 
-- resolve
-
-  跳过调用插件，执行剩余其它插件的resolveId钩子获取文件绝对路径
+通过this重新执行插件钩子时会跳过调用插件本身，执行剩余其它插件，返回结果
 
 :::
 
@@ -1065,6 +1063,12 @@ this.moduleLoader = new ModuleLoader(this, this.modulesById, this.options, this.
 
   [顺序执行和处理插件异步`transform`钩子和返回值](https://cn.rollupjs.org/plugin-development/#transform)
 
+  ::: tip
+  
+  如果转换不移动代码，你可以通过将 `map` 设置为 `null` 来保留现有的 sourcemaps。否则，你可能需要生成源映射
+  
+  :::
+  
   ```typescript
   const id = module.id;
   const sourcemapChain: DecodedSourceMapOrMissing[] = [];
@@ -1146,8 +1150,25 @@ this.moduleLoader = new ModuleLoader(this, this.modulesById, this.options, this.
     return error(logPluginError(error_, pluginName, { hook: 'transform', id }));
   }
   ```
-
   
+
+- 返回结果
+
+  ```typescript
+  return {
+  		ast,
+  		code,
+  		customTransformCache,
+  		originalCode,
+  		originalSourcemap,
+  		sourcemapChain,
+  		transformDependencies
+  	};
+  ```
+
+- setSource
+
+  调用module实例的setSource方法去生成ast
 
 ##### 执行构造函数
 
@@ -1236,6 +1257,80 @@ private syntheticNamespace: Variable | null | undefined = null; // 合成命名�
 private transformDependencies: string[] = []; // 存储转换依赖
 private transitiveReexports: string[] | null = null; // 缓存传递性重新导出
 ```
+
+### 重要方法
+
+#### setSource
+
+- 保存代码
+
+  ```typescript
+  this.info.code = code;
+  this.originalCode = originalCode;
+  ```
+
+- magicString来操作code
+
+  ````typescript
+  this.magicString = new MagicString(code, {
+      filename: (this.excludeFromSourcemap ? null : fileName)!, // don't include plugin helpers in sourcemap
+      indentExclusionRanges: []
+    });
+  ````
+
+- 新建ast上下文
+
+  ```typescript
+  this.astContext = {
+  			addDynamicImport: this.addDynamicImport.bind(this),
+  			addExport: this.addExport.bind(this),
+  			addImport: this.addImport.bind(this),
+  			addImportMeta: this.addImportMeta.bind(this),
+  			addImportSource: this.addImportSource.bind(this),
+  			code, // Only needed for debugging
+  			deoptimizationTracker: this.graph.deoptimizationTracker,
+  			error: this.error.bind(this),
+  			fileName, // Needed for warnings
+  			getExports: this.getExports.bind(this),
+  			getImportedJsxFactoryVariable: this.getImportedJsxFactoryVariable.bind(this),
+  			getModuleExecIndex: () => this.execIndex,
+  			getModuleName: this.basename.bind(this),
+  			getNodeConstructor: (name: string) => nodeConstructors[name] || nodeConstructors.UnknownNode,
+  			getReexports: this.getReexports.bind(this),
+  			importDescriptions: this.importDescriptions,
+  			includeAllExports: () => this.includeAllExports(true),
+  			includeDynamicImport: this.includeDynamicImport.bind(this),
+  			includeVariableInModule: this.includeVariableInModule.bind(this),
+  			log: this.log.bind(this),
+  			magicString: this.magicString,
+  			manualPureFunctions: this.graph.pureFunctions,
+  			module: this,
+  			moduleContext: this.context,
+  			newlyIncludedVariableInits: this.graph.newlyIncludedVariableInits,
+  			options: this.options,
+  			requestTreeshakingPass: () => (this.graph.needsTreeshakingPass = true),
+  			traceExport: (name: string) => this.getVariableForExportName(name),
+  			traceVariable: this.traceVariable.bind(this),
+  			usesTopLevelAwait: false
+  		};
+  ```
+
+- 新建模块作用域
+
+  ```typescript
+  this.scope = new ModuleScope(this.graph.scope, this.astContext);
+  ```
+
+- 解析源代码生成ast
+
+  ```typescript
+  	const astBuffer = await parseAsync(code, false, this.options.jsx !== false);
+    this.ast = convertProgram(astBuffer, programParent, this.scope);
+  ```
+
+  
+
+
 
 ### 构造函数
 

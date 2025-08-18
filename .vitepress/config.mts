@@ -46,6 +46,7 @@ export default defineConfig({
           { text: "react", link: "/react" },  
           { text: "typescript", link: "/typescript" },
           { text: "ast", link: "/ast" },
+          { text: "magic-string", link: "/magic-string" },
           { text: "原子化CSS", link: "/原子化CSS" },
           { text: "算法", link: "/算法" },
           { text: "gsap", link: "/gsap" },

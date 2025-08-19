@@ -526,16 +526,22 @@ export default defineConfig({
 
 #### pipeline 和 filesystem 作用
 
-- pipeline：扫描构建管道中的内容，适合动态 class、依赖包等。
+::: tip
 
-- filesystem：扫描磁盘原始文件，适合源码、静态文件、未被构建工具处理的内容。
+在项目中如果要扫描node_modules 依赖包文件来生成unocss样式的话，需要pipeline和filesystem搭配一起配置，因为vite的开发环境和生成环境不同，开发环境使用的是vite预构建生成的`.vite`文件夹下的模块，而生产环境也是根据包管理器的不同而不同，比如pnpm的话是`.pnpm`文件夹下模块，所以需要先通过filesystem指定打包的依赖的文件，然后通过pipeline配置的规则来过滤文件
 
-| 场景                     | pipeline            | filesystem |
-| :----------------------- | :------------------ | :--------- |
-| 扫描 Vite 处理过的源码   | ✅                   | ✅          |
-| 扫描 node_modules 依赖包 | ✅（需被 Vite 处理） | ✅          |
-| 扫描动态生成 class       | ✅                   | ❌          |
-| 扫描纯文本/非构建文件    | ❌                   | ✅          |
+:::
+
+- pipeline：在rollup打包时的tranforms钩子中对id进行过滤，处理符合条件的文件
+
+- filesystem：可以指定扫描的文件，内部使用glob来扫描指定文件夹，然后通过pipeline配置的规则来过滤文件
+
+| 场景                     | pipeline                                                     | filesystem |
+| :----------------------- | :----------------------------------------------------------- | :--------- |
+| 扫描 Vite 处理过的源码   | ✅                                                            | ✅          |
+| 扫描 node_modules 依赖包 | ✅（被 Vite 处理过的，开发环境在`.vite`文件夹下，生产文件可能会根据包管理器的不同而不同） | ✅          |
+| 扫描动态生成 class       | ✅                                                            | ❌          |
+| 扫描纯文本/非构建文件    | ❌                                                            | ✅          |
 
 ```typescript
 import { defineConfig } from 'unocss'
@@ -562,20 +568,6 @@ export default defineConfig({
 ```
 
 
-
-::: tip
-
-同时配置 pipeline 和 filesystem 能最大化保证 unocss 能扫描到所有 class。下面详细解释原因：
-
-pipeline 会扫描所有被 Vite/webpack 构建管道处理过的文件（包括依赖、源码等）。只要你的依赖被 Vite 处理并打包，pipeline 是可以扫描到的。
-
-真实项目中常见的“漏扫”场景：
-
-- 某些 node_modules 里的文件（比如 .js、.ts），如果没有被直接 import 到你的项目，Vite 可能不会处理它们，pipeline 就扫描不到。比如你只 import 了 依赖包的入口，theme 里的某些文件没被 import，Vite 不会处理它们。
-
-你依赖包的 dist 目录同时被 pipeline 和 filesystem 扫描，防止漏扫。
-
-:::
 
 #### 限制
 

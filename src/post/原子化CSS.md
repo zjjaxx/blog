@@ -266,22 +266,9 @@ Tailwind 内部严重依赖 CSS 变量，因此如果您可以在项目中使用
 
 ##### [为什么`@theme`不是`:root`？](https://tailwindcss.com/docs/theme#why-theme-instead-of-root)
 
-由于主题变量的作用比常规 CSS 变量更多，Tailwind 使用特殊语法，以便始终明确定义主题变量。主题变量也必须在顶层定义
+主题变量不仅仅是*CSS*变量 - 它们还连接到实用程序类。
 
-##### [使用主题变量](https://tailwindcss.com/docs/theme#using-your-theme-variables)
-
-编译 CSS 时，所有主题变量都会转换为常规 CSS 变量：
-
-```css
-:root {
-  --font-sans: ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
-  --font-serif: ui-serif, Georgia, Cambria, "Times New Roman", Times, serif;
-}
-```
-
-##### [与实用程序类的关系](https://tailwindcss.com/docs/theme#relationship-to-utility-classes)
-
-Tailwind 中的一些实用程序类（例如`flex`和 ）`object-cover`是静态的，并且在各个项目中始终相同。但许多其他类是由主题变量驱动的，并且仅因您定义的主题变量而存在。
+当您想要定义一个不打算连接到实用程序类的变量时，可以使用`:root`
 
 :::
 
@@ -335,6 +322,42 @@ Tailwind 还为您的主题变量生成常规 CSS 变量，以便您可以以任
 | `--ease-*`         | 过渡时间函数实用程序，例如`ease-out`                 |
 | `--animate-*`      | 动画实用程序，例如`animate-spin`                     |
 
+##### [自定义主题](https://tailwindcss.com/docs/theme#customizing-your-theme)
+
+用于`@theme`定义新的主题变量并扩展默认主题：
+
+```css
+@import "tailwindcss";
+@theme {
+  --font-script: Great Vibes, cursive;
+}
+```
+
+##### [覆盖默认主题](https://tailwindcss.com/docs/theme#overriding-the-default-theme)
+
+```css
+@import "tailwindcss";
+@theme {
+  --breakpoint-sm: 30rem;
+}
+```
+
+要完全覆盖默认主题中的整个命名空间，请`initial`使用特殊的星号语法将整个命名空间设置为
+
+```css
+@import "tailwindcss";
+@theme {
+  --color-*: initial;
+  --color-white: #fff;
+  --color-purple: #3f3cbb;
+  --color-midnight: #121063;
+  --color-tahiti: #3ab7bf;
+  --color-bermuda: #78dcca;
+}
+```
+
+
+
 ##### 完全禁用默认主题并仅使用自定义值
 
 ```css
@@ -369,6 +392,41 @@ Tailwind 还为您的主题变量生成常规 CSS 变量，以便您可以以任
   }
 }
 ```
+
+##### [引用其他变量](https://tailwindcss.com/docs/theme#referencing-other-variables)
+
+定义引用其他变量的主题变量时，使用以下`inline`选项：
+
+```css
+@import "tailwindcss";
+@theme inline {
+  --font-sans: var(--font-inter);
+}
+```
+
+::: tip
+
+`@theme inline` 的作用
+
+可以通过变量来定义主题，同时可以在局部覆盖变量来局部修改主题
+
+`index.css`
+
+```css
+@theme inline {
+	  --color-primary: var(--primary);
+}
+```
+
+`app.css`
+
+```css
+.container {
+  --primary: #0F57B3;
+}
+```
+
+::: 
 
 ### [屏幕适配](https://github.com/worldzhao/blog/issues/20)
 

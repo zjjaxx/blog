@@ -26,17 +26,17 @@ pnpm dlx shadcn@latest init
   ```json
   {
     "$schema": "https://ui.shadcn.com/schema.json",
-    "style": "new-york",
-    "rsc": false,
-    "tsx": true,
+    "style": "new-york",// 组件的样式。初始化后无法更改。
+    "rsc": false, // 是否启用对 React Server Components 的支持。
+    "tsx": true, // 设置此选项false允许将组件添加为带有.jsx文件扩展名的 JavaScript。
     "tailwind": {
-      "config": "",
-      "css": "src/index.css",
-      "baseColor": "neutral",
-      "cssVariables": true,
-      "prefix": ""
+      "config": "",// 配置可帮助 CLI 了解 Tailwind CSS 在您的项目中的设置方式。
+      "css": "src/index.css", // 将 Tailwind CSS 导入到您的项目的 CSS 文件的路径。
+      "baseColor": "neutral", // 用于生成组件的默认调色板。初始化后无法更改。
+      "cssVariables": true, // 您可以选择使用 CSS 变量或 Tailwind CSS 实用程序类进行主题设置。初始化后无法更改。要在 CSS 变量和实用程序类之间切换，您必须删除并重新安装组件。
+      "prefix": "" // Tailwind CSS 实用程序类使用的前缀。组件将使用此前缀添加。
     },
-    "aliases": {
+    "aliases": { // CLI 使用这些值和paths来自您的tsconfig.json或jsconfig.json文件的配置将生成的组件放置在正确的位置。
       "components": "@/components",
       "utils": "@/lib/utils",
       "ui": "@/components/ui",
@@ -101,3 +101,57 @@ pnpm dlx shadcn@latest init
   背景色变为 `--color-black`变量值（纯黑）
 
   :::
+
+## 主题定制
+
+您可以选择使用 CSS 变量（推荐）或实用程序类进行主题设置。
+
+### CSS 变量
+
+生成的组件里定义 `bg-primary`样式类
+
+然后再根样式文件定义了该样式
+
+```css
+ @theme inline {
+   --color-primary: var(--primary);
+ }
+```
+
+你可以全局修改`--primary`变量来定制主题，或则通过局部样式类中覆盖`--primary`变量定义局部主题
+
+::: tip
+
+背景颜色用background
+
+文本颜色用foreground
+
+`background`当变量用于组件的背景颜色时，省略后缀。
+
+:::
+
+### 自定义变量
+
+```
+:root {
+  --warning: oklch(0.84 0.16 84);
+  --warning-foreground: oklch(0.28 0.07 46);
+}
+ 
+.dark {
+  --warning: oklch(0.41 0.11 46);
+  --warning-foreground: oklch(0.99 0.02 95);
+}
+ 
+@theme inline {
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+}
+```
+
+在组件中使用实用程序类
+
+```
+<div className="bg-warning text-warning-foreground" />
+```
+

@@ -48,6 +48,8 @@ export default defineConfig({
           { text: "ast", link: "/ast" },
           { text: "magic-string", link: "/magic-string" },
           { text: "原子化CSS", link: "/原子化CSS" },
+          {text:"shadcn组件库",link:"/shadcn组件库"},
+          {text:"tanstack",link:"/tanstack"},
           { text: "算法", link: "/算法" },
           { text: "gsap", link: "/gsap" },
           { text: "JSONSchema", link: "/JSON-schema" },

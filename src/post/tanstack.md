@@ -522,3 +522,685 @@ const result = useQuery({
 })
 ```
 
+### **突变**
+
+与查询不同，突变通常用于创建/更新/删除数据或执行服务器副作用。为此，TanStack Query 导出了一个useMutation钩子。
+
+```tsx
+function App() {
+  const mutation = useMutation({
+    mutationFn: (newTodo) => {
+      return axios.post('/todos', newTodo)
+    },
+  })
+
+  return (
+    <div>
+      {mutation.isPending ? (
+        'Adding todo...'
+      ) : (
+        <>
+          {mutation.isError ? (
+            <div>An error occurred: {mutation.error.message}</div>
+          ) : null}
+
+          {mutation.isSuccess ? <div>Todo added!</div> : null}
+
+          <button
+            onClick={() => {
+              mutation.mutate({ id: new Date(), title: 'Do Laundry' })
+            }}
+          >
+            Create Todo
+          </button>
+        </>
+      )}
+    </div>
+  )
+}
+```
+
+在任何给定时刻，突变只能处于以下状态之一：
+
+- isIdle或status === 'idle' - 突变当前处于空闲状态或处于刷新/重置状态
+- isPending或status === 'pending' - 突变目前正在运行
+- isError或status === 'error' - 突变遇到错误
+- isSuccess或status === 'success' - 突变成功且突变数据可用
+
+即使只是变量，突变也并不是那么特殊，但是当与onSuccess选项、[查询客户端的invalidateQueries方法](https://tanstack.com/query/latest/docs/reference/QueryClient#queryclientinvalidatequeries)和[查询客户端的setQueryData方法](https://tanstack.com/query/latest/docs/reference/QueryClient#queryclientsetquerydata)一起使用时，突变就成为非常强大的工具。
+
+#### [重置突变状态](https://tanstack.com/query/latest/docs/framework/react/guides/mutations#resetting-mutation-state)
+
+有时你需要清除突变请求的错误或数据。为此，你可以使用reset函数来处理：
+
+```tsx
+const CreateTodo = () => {
+  const [title, setTitle] = useState('')
+  const mutation = useMutation({ mutationFn: createTodo })
+
+  const onCreateTodo = (e) => {
+    e.preventDefault()
+    mutation.mutate({ title })
+  }
+
+  return (
+    <form onSubmit={onCreateTodo}>
+      {mutation.error && (
+        <h5 onClick={() => mutation.reset()}>{mutation.error}</h5>
+      )}
+      <input
+        type="text"
+        value={title}
+        onChange={(e) => setTitle(e.target.value)}
+      />
+      <br />
+      <button type="submit">Create Todo</button>
+    </form>
+  )
+}
+```
+
+#### [突变的副作用](https://tanstack.com/query/latest/docs/framework/react/guides/mutations#mutation-side-effects)
+
+useMutation附带一些辅助选项，允许在突变生命周期的任何阶段快速轻松地产生副作用。
+
+```tsx
+useMutation({
+  mutationFn: addTodo,
+  onMutate: (variables) => {
+    // A mutation is about to happen!
+
+    // Optionally return a context containing data to use when for example rolling back
+    return { id: 1 }
+  },
+  onError: (error, variables, context) => {
+    // An error happened!
+    console.log(`rolling back optimistic update with id ${context.id}`)
+  },
+  onSuccess: (data, variables, context) => {
+    // Boom baby!
+  },
+  onSettled: (data, error, variables, context) => {
+    // Error or success... doesn't matter!
+  },
+})
+```
+
+您可能会发现，除了在useMutation中定义的回调之外，调用mutate时还需要**触发其他回调**
+
+```tsx
+useMutation({
+  mutationFn: addTodo,
+  onSuccess: (data, variables, context) => {
+    // I will fire first
+  },
+  onError: (error, variables, context) => {
+    // I will fire first
+  },
+  onSettled: (data, error, variables, context) => {
+    // I will fire first
+  },
+})
+
+mutate(todo, {
+  onSuccess: (data, variables, context) => {
+    // I will fire second!
+  },
+  onError: (error, variables, context) => {
+    // I will fire second!
+  },
+  onSettled: (data, error, variables, context) => {
+    // I will fire second!
+  },
+})
+```
+
+#### [连续突变](https://tanstack.com/query/latest/docs/framework/react/guides/mutations#consecutive-mutations)
+
+对于连续的突变，处理onSuccess、onError和onSettled回调略有不同。当传递给mutate函数时，它们只会在组件仍然挂载的情况下触发*一次*。这是因为每次调用mutate函数时，突变观察者都会被移除并重新订阅。相反，useMutation处理程序会在每次mutate调用时执行。
+
+```tsx
+useMutation({
+  mutationFn: addTodo,
+  onSuccess: (data, variables, context) => {
+    // Will be called 3 times
+  },
+})
+
+const todos = ['Todo 1', 'Todo 2', 'Todo 3']
+todos.forEach((todo) => {
+  mutate(todo, {
+    onSuccess: (data, variables, context) => {
+      // Will execute only once, for the last mutation (Todo 3),
+      // regardless which mutation resolves first
+    },
+  })
+})
+```
+
+#### promise
+
+使用mutateAsync而不是mutate来获取一个在成功时解析，或在错误时抛出的 Promise。例如，这可以用来组合副作用。
+
+```tsx
+const mutation = useMutation({ mutationFn: addTodo })
+
+try {
+  const todo = await mutation.mutateAsync(todo)
+  console.log(todo)
+} catch (error) {
+  console.error(error)
+} finally {
+  console.log('done')
+}
+```
+
+#### [重试](https://tanstack.com/query/latest/docs/framework/react/guides/mutations#retry)
+
+默认情况下，TanStack Query 不会在发生错误时重试突变，但可以使用重试选项：
+
+```tsx
+const mutation = useMutation({
+  mutationFn: addTodo,
+  retry: 3,
+})
+```
+
+#### [突变范围](https://tanstack.com/query/latest/docs/framework/react/guides/mutations#mutation-scopes)
+
+默认情况下，所有突变都会并行运行 - 即使您多次调用同一突变的.mutate()函数。为了避免这种情况，可以给突变指定一个带有ID的作用域。所有具有相同scope.id 的突变都将串行运行，这意味着当它们被触发时，如果该作用域中已有突变正在进行，它们将以isPaused: true状态启动。它们将被放入队列，并在队列时间到后自动恢复。
+
+```tsx
+const mutation = useMutation({
+  mutationFn: addTodo,
+  scope: {
+    id: 'todo',
+  },
+})
+```
+
+### **查询无效**
+
+等待查询过期后再重新获取并不总是有效，尤其是当您确定查询的数据由于用户操作而过期时。为此，QueryClient提供了一个invalidateQueries方法，允许您智能地将查询标记为过期，并可能重新获取它们！
+
+```tsx
+// Invalidate every query in the cache
+queryClient.invalidateQueries()
+// Invalidate every query with a key that starts with `todos`
+queryClient.invalidateQueries({ queryKey: ['todos'] })
+```
+
+当使用invalidateQueries使查询无效时，会发生两件事：
+
+- 它被标记为过期。此过期状态将覆盖useQuery或相关钩子中使用的任何staleTime配置
+- 如果查询当前正在通过useQuery或相关钩子进行渲染，它也将在后台重新获取
+
+#### [使用invalidateQueries进行查询匹配](https://tanstack.com/query/latest/docs/framework/react/guides/query-invalidation#query-matching-with-invalidatequeries)
+
+使用invalidateQueries和removeQueries等 API （以及其他支持部分查询匹配的 API）时，您可以根据前缀匹配多个查询，也可以更具体地匹配一个精确的查询
+
+```tsx
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+
+// Get QueryClient from the context
+const queryClient = useQueryClient()
+
+queryClient.invalidateQueries({ queryKey: ['todos'] })
+
+// Both queries below will be invalidated
+const todoListQuery = useQuery({
+  queryKey: ['todos'],
+  queryFn: fetchTodoList,
+})
+const todoListQuery = useQuery({
+  queryKey: ['todos', { page: 1 }],
+  queryFn: fetchTodoList,
+})
+```
+
+您甚至可以通过将更具体的查询键传递给invalidateQueries方法来使具有特定变量的查询无效
+
+```tsx
+queryClient.invalidateQueries({
+  queryKey: ['todos', { type: 'done' }],
+})
+
+// The query below will be invalidated
+const todoListQuery = useQuery({
+  queryKey: ['todos', { type: 'done' }],
+  queryFn: fetchTodoList,
+})
+
+// However, the following query below will NOT be invalidated
+const todoListQuery = useQuery({
+  queryKey: ['todos'],
+  queryFn: fetchTodoList,
+})
+```
+
+invalidateQueries API 非常灵活，因此即使您只想使**没有**任何变量或子键的 todos 查询无效，您也可以将exact : true选项传递给invalidateQueries方法：
+
+```tsx
+queryClient.invalidateQueries({
+  queryKey: ['todos'],
+  exact: true,
+})
+
+// The query below will be invalidated
+const todoListQuery = useQuery({
+  queryKey: ['todos'],
+  queryFn: fetchTodoList,
+})
+
+// However, the following query below will NOT be invalidated
+const todoListQuery = useQuery({
+  queryKey: ['todos', { type: 'done' }],
+  queryFn: fetchTodoList,
+})
+```
+
+如果你想要**更**精细的查询，可以将谓词函数传递给invalidateQueries方法。此函数将从查询缓存中接收每个Query实例，并允许你返回true或false来表示是否要使该查询无效：
+
+```tsx
+queryClient.invalidateQueries({
+  predicate: (query) =>
+    query.queryKey[0] === 'todos' && query.queryKey[1]?.version >= 10,
+})
+
+// The query below will be invalidated
+const todoListQuery = useQuery({
+  queryKey: ['todos', { version: 20 }],
+  queryFn: fetchTodoList,
+})
+
+// The query below will be invalidated
+const todoListQuery = useQuery({
+  queryKey: ['todos', { version: 10 }],
+  queryFn: fetchTodoList,
+})
+
+// However, the following query below will NOT be invalidated
+const todoListQuery = useQuery({
+  queryKey: ['todos', { version: 5 }],
+  queryFn: fetchTodoList,
+})
+```
+
+#### **突变导致的无效**
+
+使查询无效只是成功的一半。知道**何时**使它们无效是另一半。通常，当应用中的某个变更成功时，很可能应用中有相关的查询需要被无效，并且可能需要重新获取，以适应该变更带来的新变化
+
+```tsx
+import { useMutation, useQueryClient } from '@tanstack/react-query'
+
+const queryClient = useQueryClient()
+
+// When this mutation succeeds, invalidate any queries with the `todos` or `reminders` query key
+const mutation = useMutation({
+  mutationFn: addTodo,
+  onSuccess: async () => {
+    // If you're invalidating a single query
+    await queryClient.invalidateQueries({ queryKey: ['todos'] })
+
+    // If you're invalidating multiple queries
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ['todos'] }),
+      queryClient.invalidateQueries({ queryKey: ['reminders'] }),
+    ])
+  },
+})
+```
+
+#### **突变反应的更新**
+
+在处理**更新**服务器上对象的突变时，通常会在突变的响应中自动返回新对象。我们无需重新获取该项目的任何查询并浪费对已有数据的网络调用，而是可以利用突变函数返回的对象，并使用[查询客户端的setQueryData](https://tanstack.com/query/latest/docs/reference/QueryClient#queryclientsetquerydata)方法立即用新数据更新现有查询：
+
+```tsx
+const queryClient = useQueryClient()
+
+const mutation = useMutation({
+  mutationFn: editTodo,
+  onSuccess: (data) => {
+    queryClient.setQueryData(['todo', { id: 5 }], data)
+  },
+})
+
+mutation.mutate({
+  id: 5,
+  name: 'Do the laundry',
+})
+
+// The query below will be updated with the response from the
+// successful mutation
+const { status, data, error } = useQuery({
+  queryKey: ['todo', { id: 5 }],
+  queryFn: fetchTodoById,
+})
+```
+
+### **乐观更新**
+
+React Query 提供了两种在突变完成之前乐观地更新 UI 的方法。你可以使用onMutate选项直接更新缓存，也可以利用useMutation结果返回的变量来更新 UI 。
+
+```tsx
+const addTodoMutation = useMutation({
+  mutationFn: (newTodo: string) => axios.post('/api/data', { text: newTodo }),
+  // make sure to _return_ the Promise from the query invalidation
+  // so that the mutation stays in `pending` state until the refetch is finished
+  onSettled: () => queryClient.invalidateQueries({ queryKey: ['todos'] }),
+})
+
+const { isPending, submittedAt, variables, mutate, isError } = addTodoMutation
+```
+
+然后，您将可以访问addTodoMutation.variables，其中包含已添加的待办事项。在呈现查询的 UI 列表中，您可以在突变处于待处理状态时将另一项附加到列表中：
+
+```tsx
+<ul>
+  {todoQuery.items.map((todo) => (
+    <li key={todo.id}>{todo.text}</li>
+  ))}
+  {isPending && <li style={{ opacity: 0.5 }}>{variables}</li>}
+</ul>
+```
+
+只要突变尚未完成，我们就会渲染一个具有不同不透明度的临时项。突变完成后，该项将自动不再渲染。鉴于重新获取成功，我们应该在列表中看到该项作为“普通项”。
+
+如果突变发生错误，该项目也会消失。但是，如果我们愿意，可以通过检查突变的isError状态来继续显示它。突变发生错误时，变量不会*被*清除，因此我们仍然可以访问它们，甚至可以显示一个重试按钮：
+
+```tsx
+{
+  isError && (
+    <li style={{ color: 'red' }}>
+      {variables}
+      <button onClick={() => mutate(variables)}>Retry</button>
+    </li>
+  )
+}
+```
+
+#### [如果突变和查询不存在于同一个组件中](https://tanstack.com/query/latest/docs/framework/react/guides/optimistic-updates#if-the-mutation-and-the-query-dont-live-in-the-same-component)
+
+如果突变和查询位于同一组件中，则此方法非常有效。但是，您也可以通过专用的useMutationState钩子访问其他组件中的所有突变。最好将其与mutationKey结合使用：
+
+```TSX
+// somewhere in your app
+const { mutate } = useMutation({
+  mutationFn: (newTodo: string) => axios.post('/api/data', { text: newTodo }),
+  onSettled: () => queryClient.invalidateQueries({ queryKey: ['todos'] }),
+  mutationKey: ['addTodo'],
+})
+
+// access variables somewhere else
+const variables = useMutationState<string>({
+  filters: { mutationKey: ['addTodo'], status: 'pending' },
+  select: (mutation) => mutation.state.variables,
+})
+```
+
+变量将是一个数组，因为可能同时运行多个突变。如果我们需要每个项目的唯一键，我们也可以选择mutation.state.submittedAt。这甚至可以轻松显示并发乐观更新。
+
+#### [通过缓存](https://tanstack.com/query/latest/docs/framework/react/guides/optimistic-updates#via-the-cache)
+
+如果您在执行变更之前乐观地更新状态，则变更可能会失败。在大多数此类失败情况下，您可以触发乐观查询的重新获取，将其恢复到其真实的服务器状态。但在某些情况下，重新获取可能无法正常工作，并且变更错误可能表示某种类型的服务器问题，导致无法重新获取。在这种情况下，您可以选择回滚更新。
+
+```tsx
+const queryClient = useQueryClient()
+
+useMutation({
+  mutationFn: updateTodo,
+  // When mutate is called:
+  onMutate: async (newTodo) => {
+    // Cancel any outgoing refetches
+    // (so they don't overwrite our optimistic update)
+    await queryClient.cancelQueries({ queryKey: ['todos'] })
+
+    // Snapshot the previous value
+    const previousTodos = queryClient.getQueryData(['todos'])
+
+    // Optimistically update to the new value
+    queryClient.setQueryData(['todos'], (old) => [...old, newTodo])
+
+    // Return a context object with the snapshotted value
+    return { previousTodos }
+  },
+  // If the mutation fails,
+  // use the context returned from onMutate to roll back
+  onError: (err, newTodo, context) => {
+    queryClient.setQueryData(['todos'], context.previousTodos)
+  },
+  // Always refetch after error or success:
+  onSettled: () => queryClient.invalidateQueries({ queryKey: ['todos'] }),
+})
+```
+
+### **查询取消**
+
+#### [默认行为](https://tanstack.com/query/latest/docs/framework/react/guides/query-cancellation#default-behavior)
+
+默认情况下，在 promise 解析之前卸载或变为未使用的查询*不会*被取消。这意味着，在 promise 解析之后，生成的数据将在缓存中可用。如果您已开始接收查询，但在查询完成之前卸载了组件，这将非常有用。如果您再次挂载组件，并且查询尚未被垃圾回收，则数据将可用。
+
+但是，如果你使用了AbortSignal，Promise 将被取消（例如中止获取数据），因此查询也必须被取消。取消查询将导致其状态*恢复*到之前的状态。
+
+#### [使用fetch在组件卸载后取消请求](https://tanstack.com/query/latest/docs/framework/react/guides/query-cancellation#using-fetch)
+
+```tsx
+const query = useQuery({
+  queryKey: ['todos'],
+  queryFn: async ({ signal }) => {
+    const todosResponse = await fetch('/todos', {
+      // Pass the signal to one fetch
+      signal,
+    })
+    const todos = await todosResponse.json()
+
+    const todoDetails = todos.map(async ({ details }) => {
+      const response = await fetch(details, {
+        // Or pass it to several
+        signal,
+      })
+      return response.json()
+    })
+
+    return Promise.all(todoDetails)
+  },
+})
+```
+
+#### [使用axios在组件卸载后取消请求 ](https://tanstack.com/query/latest/docs/framework/react/guides/query-cancellation#using-axios-v0220)
+
+```tsx
+import axios from 'axios'
+
+const query = useQuery({
+  queryKey: ['todos'],
+  queryFn: ({ signal }) =>
+    axios.get('/todos', {
+      // Pass the signal to `axios`
+      signal,
+    }),
+})
+```
+
+#### [使用XMLHttpRequest在组件卸载后取消请求](https://tanstack.com/query/latest/docs/framework/react/guides/query-cancellation#using-xmlhttprequest)
+
+```tsx
+const query = useQuery({
+  queryKey: ['todos'],
+  queryFn: ({ signal }) => {
+    return new Promise((resolve, reject) => {
+      var oReq = new XMLHttpRequest()
+      oReq.addEventListener('load', () => {
+        resolve(JSON.parse(oReq.responseText))
+      })
+      signal?.addEventListener('abort', () => {
+        oReq.abort()
+        reject()
+      })
+      oReq.open('GET', '/todos')
+      oReq.send()
+    })
+  },
+})
+```
+
+### 滚动恢复
+
+传统上，当您在 Web 浏览器中导航到之前访问过的页面时，您会发现该页面会滚动到您离开之前所在的准确位置。这被称为**滚动恢复**，自从 Web 应用程序开始转向客户端数据获取以来，这种功能有所退化。然而，有了 TanStack Query，这种情况就不再存在了。
+
+TanStack Query 中所有查询（包括分页查询和无限查询）的“滚动恢复”功能开箱即用，Just Works™️。这是因为查询结果会被缓存，并能够在查询渲染时同步检索。只要您的查询缓存时间足够长（默认时间为 5 分钟）且未被垃圾回收，滚动恢复功能即可始终有效。
+
+### **缓存**
+
+假设我们使用默认的gcTime为**5 分钟**，默认的staleTime为0。
+
+- 挂载一个
+
+  useQuery({ queryKey: ['todos'], queryFn: fetchTodos })
+
+  的新实例。
+
+  - 由于没有使用['todos']查询键进行其他查询，因此此查询将显示硬加载状态并发出网络请求以获取数据。
+  - 当网络请求完成后，返回的数据将缓存在['todos']键下。
+  - 该钩子将在配置的staleTime之后将数据标记为陈旧（默认为0，或立即）。
+
+- useQuery({ queryKey: ['todos'], queryFn: fetchTodos })
+
+  的第二个实例安装在其他地方。
+
+  - 由于缓存中已经具有第一个查询中['todos']键的数据，因此该数据会立即从缓存中返回。
+  - 新实例使用其查询功能触发新的网络请求。
+    - 请注意，无论两个fetchTodos查询函数是否相同，两个查询的[状态](https://tanstack.com/query/latest/docs/framework/react/reference/useQuery)都会更新（包括isFetching、isPending和其他相关值），因为它们具有相同的查询键。
+  - 当请求成功完成时， ['todos']键下的缓存数据将使用新数据进行更新，并且两个实例都将使用新数据进行更新。
+
+- useQuery({ queryKey: ['todos'], queryFn: fetchTodos })
+
+  查询的两个实例均已卸载且不再使用。
+
+  - 由于此查询不再有活动实例，因此使用gcTime设置垃圾收集超时来删除和垃圾收集查询（默认为**5 分钟**）。
+
+- 在缓存超时完成之前，另一个useQuery({ queryKey: ['todos'], queryFn: fetchTodos })实例挂载。在fetchTodos函数在后台运行时，该查询会立即返回可用的缓存数据。成功完成后，它将使用新数据填充缓存。
+
+- useQuery({ queryKey: ['todos'], queryFn: fetchTodos })的最后一个实例被卸载。
+
+- **5 分钟**内不再出现useQuery({ queryKey: ['todos'], queryFn: fetchTodos })的实例。['todos']键下的缓存数据将被删除并被垃圾收集。
+
+## TanStack Router简介
+
+**anStack Router 是一个用于构建 React 和 Solid 应用程序的路由器**。其功能包括：
+
+- 100% 推断 TypeScript 支持
+- 类型安全导航
+- 嵌套路由和布局路由（无路径布局）
+- 内置路由加载器，带 SWR 缓存
+- 专为客户端数据缓存（TanStack Query、SWR 等）设计
+- 自动路由预取
+- 异步路由元素和错误边界
+- 基于文件的路线生成
+- Typesafe JSON-first 搜索参数状态管理 API
+- 路径和搜索参数架构验证
+- 搜索参数导航 API
+- 自定义搜索参数解析器/序列化器支持
+- 搜索参数中间件
+- 路由匹配/加载中间件
+
+### 路由
+
+#### [索引路由](https://tanstack.com/router/latest/docs/framework/react/routing/routing-concepts#index-routes)
+
+**当索引路由完全匹配且没有子路由匹配时，**索引路由会专门针对其父路由。
+
+让我们看一下/posts URL 的索引路由：
+
+```tsx
+// posts.index.tsx
+import { createFileRoute } from '@tanstack/react-router'
+
+// Note the trailing slash, which is used to target index routes
+export const Route = createFileRoute('/posts/')({
+  component: PostsIndexComponent,
+})
+
+function PostsIndexComponent() {
+  return <div>Please select a post!</div>
+}
+```
+
+当 URL 正好是/posts时，将匹配此路由。
+
+#### [动态路由](https://tanstack.com/router/latest/docs/framework/react/routing/routing-concepts#dynamic-route-segments)
+
+以$开头，后跟标签的路由路径段是动态的，会将 URL 的该部分捕获到params对象中，以便在应用程序中使用。例如，路径名/posts/123将匹配/posts/$postId路由，而params对象将是{ postId: '123' }。
+
+这些参数随后便可在路由的配置和组件中使用！我们来看一个posts.$postId.tsx路由：
+
+```tsx
+import { createFileRoute } from '@tanstack/react-router'
+
+export const Route = createFileRoute('/posts/$postId')({
+  // In a loader
+  loader: ({ params }) => fetchPost(params.postId),
+  // Or in a component
+  component: PostComponent,
+})
+
+function PostComponent() {
+  // In a component!
+  const { postId } = Route.useParams()
+  return <div>Post ID: {postId}</div>
+}
+```
+
+::: tip
+
+当路由被激活（如用户访问 `/posts/123`）时，`loader`会**自动执行**，并根据路由参数（如 `postId`）从服务端或本地获取数据。数据加载完成后，会被缓存并传递给路由对应的组件，确保组件渲染时数据已就绪。
+
+:::
+
+#### [可选路径参数](https://tanstack.com/router/latest/docs/framework/react/routing/routing-concepts#optional-path-parameters)
+
+可选路径参数允许您定义 URL 中可能存在或不存在的路由段。它们使用{-$paramName}语法，并提供灵活的路由模式，其中某些参数是可选的。
+
+```tsx
+// posts.{-$category}.tsx - Optional category parameter
+import { createFileRoute } from '@tanstack/react-router'
+
+export const Route = createFileRoute('/posts/{-$category}')({
+  component: PostsComponent,
+})
+
+function PostsComponent() {
+  const { category } = Route.useParams()
+
+  return <div>{category ? `Posts in ${category}` : 'All Posts'}</div>
+}
+```
+
+此路由将匹配/posts（类别为undefined）和/posts/tech（类别为"tech"）。
+
+#### 布局路由
+
+布局路由用于将子路由与附加组件和逻辑包裹在一起。它们的作用如下：
+
+- 使用布局组件包装子路由
+- 在显示任何子路由之前强制执行加载器要求
+- 验证并提供搜索参数给子路由
+- 为子路由的错误组件或待处理元素提供回退
+- 为所有子路由提供共享上下文
+
+```tsx
+routes/
+├── app.tsx
+├── app.dashboard.tsx
+├── app.settings.tsx
+```
+
+在上面的树中，app.tsx是一个布局路由，它包装了两个子路由，app.dashboard.tsx和app.settings.tsx。
+
+#### 无路径布局路由
+
+[与布局路由](https://tanstack.com/router/latest/docs/framework/react/routing/routing-concepts#layout-routes)类似，无路径布局路由用于在子路由中添加额外的组件和逻辑。然而，无路径布局路由不需要 URL 中匹配路径，而是用于在子路由中添加额外的组件和逻辑，而无需URL 中匹配路径。
+
+无路径布局路线以下划线（_）为前缀，表示它们是“无路径的”。
+
+但是，与布局路由不同，由于无路径布局路由确实基于 URL 路径段进行匹配，这意味着这些路由不支持[动态路由段](https://tanstack.com/router/latest/docs/framework/react/routing/routing-concepts#dynamic-route-segments)作为其路径的一部分，因此无法在 URL 中匹配。

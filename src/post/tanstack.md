@@ -1197,6 +1197,20 @@ routes/
 
 在上面的树中，app.tsx是一个布局路由，它包装了两个子路由，app.dashboard.tsx和app.settings.tsx。
 
+#### [非嵌套路由](https://tanstack.com/router/latest/docs/framework/react/routing/routing-concepts#non-nested-routes)
+
+可以通过在父文件路由段后添加_来创建非嵌套路由，并用于从其父级中**取消嵌套**路由并呈现其自己的组件树。
+
+```tsx
+routes/
+├── posts.tsx
+├── posts.$postId.tsx
+├── posts_.$postId.edit.tsx
+```
+
+- posts .$postId.tsx路由正常嵌套在posts.tsx路由下，并将呈现<Posts><Post>。
+- posts_.$postId.edit.tsx路由**不与其他路由共享**相同的posts前缀，因此将被视为顶级路由并将呈现<PostEditor>。
+
 #### 无路径布局路由
 
 [与布局路由](https://tanstack.com/router/latest/docs/framework/react/routing/routing-concepts#layout-routes)类似，无路径布局路由用于在子路由中添加额外的组件和逻辑。然而，无路径布局路由不需要 URL 中匹配路径，而是用于在子路由中添加额外的组件和逻辑，而无需URL 中匹配路径。
@@ -1204,3 +1218,231 @@ routes/
 无路径布局路线以下划线（_）为前缀，表示它们是“无路径的”。
 
 但是，与布局路由不同，由于无路径布局路由确实基于 URL 路径段进行匹配，这意味着这些路由不支持[动态路由段](https://tanstack.com/router/latest/docs/framework/react/routing/routing-concepts#dynamic-route-segments)作为其路径的一部分，因此无法在 URL 中匹配。
+
+#### [无路径路由组目录](https://tanstack.com/router/latest/docs/framework/react/routing/routing-concepts#pathless-route-group-directories)
+
+无路径路由组目录使用()将路由文件分组，无论其路径如何。它们纯粹是为了组织，不会以任何方式影响路由树或组件树。
+
+```tsx
+routes/
+├── index.tsx
+├── (app)/
+│   ├── dashboard.tsx
+│   ├── settings.tsx
+│   ├── users.tsx
+├── (auth)/
+│   ├── login.tsx
+│   ├── register.tsx
+```
+
+在上面的示例中，app和auth目录纯粹是为了组织，不会以任何方式影响路由树或组件树。它们用于将相关路由分组，以便于导航和组织。
+
+### 路由树
+
+TanStack 路由器使用嵌套路由树将 URL 与要渲染的正确组件树进行匹配。
+
+为了构建路由树，TanStack 路由器支持：
+
+- [基于文件的路由](https://tanstack.com/router/latest/docs/framework/react/routing/file-based-routing)
+- [基于代码的路由](https://tanstack.com/router/latest/docs/framework/react/routing/code-based-routing)
+
+两种方法都支持完全相同的核心特性和功能，但**基于文件的路由需要更少的代码即可获得相同或更好的结果**。因此，**基于文件的路由是配置 TanStack 路由器的首选和推荐方法**。大多数文档都是从基于文件的路由的角度编写的。
+
+#### **基于文件的路由**
+
+基于文件的路由是一种使用文件系统配置路由的方法。您无需通过代码定义路由结构，而是可以使用一系列代表应用程序路由层次结构的文件和目录来定义路由。这带来了许多好处：
+
+- **简单性**：基于文件的路由在视觉上直观且易于新手和有经验的开发人员理解。
+- **组织**：路由的组织方式反映了应用程序的 URL 结构。
+- **可扩展性**：随着应用程序的增长，基于文件的路由可以轻松添加新路由和维护现有路由。
+- **代码分割**：基于文件的路由允许 TanStack 路由器自动对您的路由进行代码分割，以获得更好的性能。
+- **类型安全**：基于文件的路由通过为您的路由生成管理类型链接来提高类型安全的上限，否则通过基于代码的路由可能会是一个繁琐的过程。
+- **一致性**：基于文件的路由强制执行路由的一致结构，从而更容易维护和更新应用程序以及从一个项目移动到另一个项目。
+
+##### [目录路由](https://tanstack.com/router/latest/docs/framework/react/routing/file-based-routing#directory-routes)
+
+目录可用于表示路线层次结构，这对于将多条路线组织成逻辑组以及减少大量深度嵌套路线的文件名长度很有用。
+
+| Filename              | Route Path              | Component Output                |
+| --------------------- | ----------------------- | ------------------------------- |
+| ʦ __root.tsx          |                         | <Root>                          |
+| ʦ index.tsx           | / (exact)               | <Root><RootIndex>               |
+| ʦ about.tsx           | /about                  | <Root><About>                   |
+| ʦ posts.tsx           | /posts                  | <Root><Posts>                   |
+| 📂 posts               |                         |                                 |
+| ┄ ʦ index.tsx         | /posts (exact)          | <Root><Posts><PostsIndex>       |
+| ┄ ʦ $postId.tsx       | /posts/$postId          | <Root><Posts><Post>             |
+| 📂 posts_              |                         |                                 |
+| ┄ 📂 $postId           |                         |                                 |
+| ┄ ┄ ʦ edit.tsx        | /posts/$postId/edit     | <Root><EditPost>                |
+| ʦ settings.tsx        | /settings               | <Root><Settings>                |
+| 📂 settings            |                         | <Root><Settings>                |
+| ┄ ʦ profile.tsx       | /settings/profile       | <Root><Settings><Profile>       |
+| ┄ ʦ notifications.tsx | /settings/notifications | <Root><Settings><Notifications> |
+| ʦ _pathlessLayout.tsx |                         | <Root><PathlessLayout>          |
+| 📂 _pathlessLayout     |                         |                                 |
+| ┄ ʦ route-a.tsx       | /route-a                | <Root><PathlessLayout><RouteA>  |
+| ┄ ʦ route-b.tsx       | /route-b                | <Root><PathlessLayout><RouteB>  |
+| 📂 files               |                         |                                 |
+| ┄ ʦ $.tsx             | /files/$                | <Root><Files>                   |
+| 📂 account             |                         |                                 |
+| ┄ ʦ route.tsx         | /account                | <Root><Account>                 |
+| ┄ ʦ overview.tsx      | /account/overview       | <Root><Account><Overview>       |
+
+##### **文件命名约定**
+
+| 特征                         | 描述                                                         |
+| ---------------------------- | ------------------------------------------------------------ |
+| **__root.tsx**               | 根路由文件必须命名为__root.tsx并且必须放在配置的routesDirectory的根目录中。 |
+| **.分隔符**                  | 路由可以使用.字符来表示嵌套路由。例如，blog.post将会作为blog的子路由生成。 |
+| **$代币**                    | 带有$标记的路由段被参数化，并将从 URL 路径名中提取值作为路由参数。 |
+| **_前缀**                    | 带有_前缀的路由段被视为无路径布局路由，在将其子路由与 URL 路径名匹配时不会使用。 |
+| **_后缀**                    | 带有_后缀的路由段会排除该路由嵌套在任何父路由之下。          |
+| **-前缀**                    | 带有-前缀的文件和文件夹将被排除在路由树之外。它们不会被添加到routeTree.gen.ts文件中，但可用于将逻辑并入路由文件夹中。 |
+| **（文件夹）文件夹名称模式** | 与该模式匹配的文件夹将被视为**路由组**，从而防止该文件夹被包含在路由的 URL 路径中。 |
+| **[x]转义**                  | 方括号用于转义文件名中原本具有路由含义的特殊字符。例如，script[.]js.tsx会转义为/script.js，api[.]v1.tsx会转义为/api.v1。 |
+| **索引令牌**                 | 当 URL 路径名与父路由完全匹配时，以索引标记（在任何文件扩展名之前）结尾的路由段将匹配父路由。这可以通过indexToken配置选项进行配置，请参阅[options](https://tanstack.com/router/latest/docs/api/file-based-routing#indextoken)。 |
+| **.route.tsx文件类型**       | 使用目录组织路由时，可以使用路由后缀在目录路径下创建路由文件。例如，blog.post.route.tsx或blog/post/route.tsx可以用作/blog/post路由的路由文件。这可以通过routeToken配置选项进行配置，请参阅[options](https://tanstack.com/router/latest/docs/api/file-based-routing#routetoken)。 |
+
+### **创建路由器**
+
+当您准备开始使用路由器时，您需要创建一个新的路由器实例。路由器实例是 TanStack 路由器的核心，负责管理路由树、匹配路由以及协调导航和路由转换。它也是配置路由器范围设置的地方。
+
+```tsx
+import { createRouter } from '@tanstack/react-router'
+
+const router = createRouter({
+  // ...
+})
+```
+
+#### [404 未找到路由](https://tanstack.com/router/latest/docs/framework/react/guide/creating-a-router#404-not-found-route)
+
+如果您使用基于文件或基于代码的路由，则需要向createRootRoute添加notFoundComponent键：
+
+````tsx
+export const Route = createRootRoute({
+  component: () => (
+    // ...
+  ),
+  notFoundComponent: () => <div>404 Not Found</div>,
+});
+````
+
+### Outlet
+
+Outlet组件用于渲染下一个可能匹配的子路由。
+
+### **导航**
+
+TanStack Router 在每次导航中都会牢记相对导航这一不变的概念，因此您会在 API 中不断看到两个属性：
+
+- from - 原始路线路径
+- to - 目标路由路径
+
+#### [ToOptions接口](https://tanstack.com/router/latest/docs/framework/react/guide/navigation#tooptions-interface)
+
+```tsx
+type ToOptions<
+  TRouteTree extends AnyRoute = AnyRoute,
+  TFrom extends RoutePaths<TRouteTree> | string = string,
+  TTo extends string = '',
+> = {
+  // `from` is an optional route ID or path. If it is not supplied, only absolute paths will be auto-completed and type-safe. It's common to supply the route.fullPath of the origin route you are rendering from for convenience. If you don't know the origin route, leave this empty and work with absolute paths or unsafe relative paths.
+  from?: string
+  // `to` can be an absolute route path or a relative path from the `from` option to a valid route path. ⚠️ Do not interpolate path params, hash or search params into the `to` options. Use the `params`, `search`, and `hash` options instead.
+  to: string
+  // `params` is either an object of path params to interpolate into the `to` option or a function that supplies the previous params and allows you to return new ones. This is the only way to interpolate dynamic parameters into the final URL. Depending on the `from` and `to` route, you may need to supply none, some or all of the path params. TypeScript will notify you of the required params if there are any.
+  params:
+    | Record<string, unknown>
+    | ((prevParams: Record<string, unknown>) => Record<string, unknown>)
+  // `search` is either an object of query params or a function that supplies the previous search and allows you to return new ones. Depending on the `from` and `to` route, you may need to supply none, some or all of the query params. TypeScript will notify you of the required search params if there are any.
+  search:
+    | Record<string, unknown>
+    | ((prevSearch: Record<string, unknown>) => Record<string, unknown>)
+  // `hash` is either a string or a function that supplies the previous hash and allows you to return a new one.
+  hash?: string | ((prevHash: string) => string)
+  // `state` is either an object of state or a function that supplies the previous state and allows you to return a new one. State is stored in the history API and can be useful for passing data between routes that you do not want to permanently store in URL search params.
+  state?:
+    | Record<string, any>
+    | ((prevState: Record<string, unknown>) => Record<string, unknown>)
+}t
+```
+
+
+
+```tsx
+import { Route as aboutRoute } from './routes/about.tsx'
+
+function Comp() {
+  return <Link to={aboutRoute.to}>About</Link>
+}
+```
+
+#### [NavigateOptions接口](https://tanstack.com/router/latest/docs/framework/react/guide/navigation#navigateoptions-interface)
+
+```tsx
+export type NavigateOptions<
+  TRouteTree extends AnyRoute = AnyRoute,
+  TFrom extends RoutePaths<TRouteTree> | string = string,
+  TTo extends string = '',
+> = ToOptions<TRouteTree, TFrom, TTo> & {
+  // `replace` is a boolean that determines whether the navigation should replace the current history entry or push a new one.
+  replace?: boolean
+  // `resetScroll` is a boolean that determines whether scroll position will be reset to 0,0 after the location is committed to browser history.
+  resetScroll?: boolean
+  // `hashScrollIntoView` is a boolean or object that determines whether an id matching the hash will be scrolled into view after the location is committed to history.
+  hashScrollIntoView?: boolean | ScrollIntoViewOptions
+  // `viewTransition` is either a boolean or function that determines if and how the browser will call document.startViewTransition() when navigating.
+  viewTransition?: boolean | ViewTransitionOptions
+  // `ignoreBlocker` is a boolean that determines if navigation should ignore any blockers that might prevent it.
+  ignoreBlocker?: boolean
+  // `reloadDocument` is a boolean that determines if navigation to a route inside of router will trigger a full page load instead of the traditional SPA navigation.
+  reloadDocument?: boolean
+  // `href` is a string that can be used in place of `to` to navigate to a full built href, e.g. pointing to an external target.
+  href?: string
+}
+```
+
+#### [LinkOptions接口](https://tanstack.com/router/latest/docs/framework/react/guide/navigation#linkoptions-interface)
+
+```tsx
+export type LinkOptions<
+  TRouteTree extends AnyRoute = AnyRoute,
+  TFrom extends RoutePaths<TRouteTree> | string = string,
+  TTo extends string = '',
+> = NavigateOptions<TRouteTree, TFrom, TTo> & {
+  // The standard anchor tag target attribute
+  target?: HTMLAnchorElement['target']
+  // Defaults to `{ exact: false, includeHash: false }`
+  activeOptions?: {
+    exact?: boolean
+    includeHash?: boolean
+    includeSearch?: boolean
+    explicitUndefined?: boolean
+  }
+  // If set, will preload the linked route on hover and cache it for this many milliseconds in hopes that the user will eventually navigate there.
+  preload?: false | 'intent'
+  // Delay intent preloading by this many milliseconds. If the intent exits before this delay, the preload will be cancelled.
+  preloadDelay?: number
+  // If true, will render the link without the href attribute
+  disabled?: boolean
+}
+```
+
+#### [导航API](https://tanstack.com/router/latest/docs/framework/react/guide/navigation#navigation-api)
+
+现在，我们已经了解了相对导航和所有界面，接下来让我们来讨论一下您可以使用的不同类型的导航 API：
+
+- <Link>组件
+  - 生成一个具有有效href的实际<a>标签，可以单击该标签，甚至可以使用 cmd/ctrl + 单击该标签在新选项卡中打开
+- useNavigate ()钩子
+  - 如果可能，应该使用Link组件进行导航，但有时您需要由于副作用而强制导航。useNavigate返回一个可以调用来执行立即客户端导航的函数。
+- <Navigate>组件
+  - 不渲染任何内容并立即执行客户端导航。
+- Router.navigate ()方法
+  - 这是 TanStack Router 中最强大的导航 API。与useNavigate类似，它以命令式方式进行导航，但只要能访问路由器，它就可用。
+
+##### [link组件](https://tanstack.com/router/latest/docs/framework/react/guide/navigation#link-component)
+
+Link组件是应用内最常用的导航方式。它会渲染一个实际的<a>标签，并赋予其有效的href属性，点击即可打开新标签页，甚至可以使用 cmd/ctrl + 点击来打开新标签页。它还支持所有常规的<a>属性，包括在新窗口中打开链接的目标等。

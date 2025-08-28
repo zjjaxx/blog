@@ -1050,6 +1050,265 @@ const query = useQuery({
 
 TanStack Query 中所有查询（包括分页查询和无限查询）的“滚动恢复”功能开箱即用，Just Works™️。这是因为查询结果会被缓存，并能够在查询渲染时同步检索。只要您的查询缓存时间足够长（默认时间为 5 分钟）且未被垃圾回收，滚动恢复功能即可始终有效。
 
+### **预取和路由器集成**
+
+#### [事件处理程序中的预取](https://tanstack.com/query/latest/docs/framework/react/guides/prefetching#prefetch-in-event-handlers)
+
+```tsx
+function ShowDetailsButton() {
+  const queryClient = useQueryClient()
+
+  const prefetch = () => {
+    queryClient.prefetchQuery({
+      queryKey: ['details'],
+      queryFn: getDetailsData,
+      // Prefetch only fires when data is older than the staleTime,
+      // so in a case like this you definitely want to set one
+      staleTime: 60000,
+    })
+  }
+
+  return (
+    <button onMouseEnter={prefetch} onFocus={prefetch} onClick={...}>
+      Show Details
+    </button>
+  )
+}
+```
+
+#### [组件中的预取](https://tanstack.com/query/latest/docs/framework/react/guides/prefetching#prefetch-in-components)
+
+当我们知道某个子组件或后代组件需要特定的数据，但又无法在其他查询加载完成之前渲染这些数据时，在组件生命周期中进行预加载就非常有用。我们借用“请求瀑布”指南中的一个例子来解释：
+
+```tsx
+function Article({ id }) {
+  const { data: articleData, isPending } = useQuery({
+    queryKey: ['article', id],
+    queryFn: getArticleById,
+  })
+
+  if (isPending) {
+    return 'Loading article...'
+  }
+
+  return (
+    <>
+      <ArticleHeader articleData={articleData} />
+      <ArticleBody articleData={articleData} />
+      <Comments id={id} />
+    </>
+  )
+}
+
+function Comments({ id }) {
+  const { data, isPending } = useQuery({
+    queryKey: ['article-comments', id],
+    queryFn: getArticleCommentsById,
+  })
+
+  ...
+}
+```
+
+这会导致请求瀑布看起来像这样：
+
+```tsx
+1. |> getArticleById()
+2.   |> getArticleCommentsById()
+```
+
+正如该指南中提到的那样，平滑瀑布并提高性能的一种方法是将getArticleCommentsById查询提升到父级并将结果作为 prop 传递下去，但如果这是不可行或不可取的，例如当组件不相关并且它们之间有多个级别时？
+
+在这种情况下，我们可以在父级中预取查询。最简单的方法是使用查询但忽略结果：
+
+```tsx
+function Article({ id }) {
+  const { data: articleData, isPending } = useQuery({
+    queryKey: ['article', id],
+    queryFn: getArticleById,
+  })
+
+  // Prefetch
+  useQuery({
+    queryKey: ['article-comments', id],
+    queryFn: getArticleCommentsById,
+    // Optional optimization to avoid rerenders when this query changes:
+    notifyOnChangeProps: [],
+  })
+
+  if (isPending) {
+    return 'Loading article...'
+  }
+
+  return (
+    <>
+      <ArticleHeader articleData={articleData} />
+      <ArticleBody articleData={articleData} />
+      <Comments id={id} />
+    </>
+  )
+}
+
+function Comments({ id }) {
+  const { data, isPending } = useQuery({
+    queryKey: ['article-comments', id],
+    queryFn: getArticleCommentsById,
+  })
+
+  ...
+}
+```
+
+这将立即开始获取“文章评论”并使瀑布变平：
+
+```tsx
+1. |> getArticleById()
+1. |> getArticleCommentsById()
+```
+
+如果要将预取与 Suspense 一起使用，则需要采取一些不同的做法。您不能使用useSuspenseQueries进行预取，因为预取会阻止组件渲染。您也不能使用useQuery进行预取，因为那样的话，直到 Suspenseful 查询解析完毕后才会启动预取。对于这种情况，您可以使用库中提供的[usePrefetchQuery](https://tanstack.com/query/latest/docs/framework/react/reference/usePrefetchQuery)或[usePrefetchInfiniteQuery钩子。](https://tanstack.com/query/latest/docs/framework/react/reference/usePrefetchInfiniteQuery)
+
+现在，您可以在实际需要数据的组件中使用useSuspenseQuery 。您*可能*需要将后面这个组件包装在其自己的<Suspense>边界中，这样我们预取的“次要”查询就不会阻塞“主要”数据的渲染。
+
+```tsx
+function ArticleLayout({ id }) {
+  usePrefetchQuery({
+    queryKey: ['article-comments', id],
+    queryFn: getArticleCommentsById,
+  })
+
+  return (
+    <Suspense fallback="Loading article">
+      <Article id={id} />
+    </Suspense>
+  )
+}
+
+function Article({ id }) {
+  const { data: articleData, isPending } = useSuspenseQuery({
+    queryKey: ['article', id],
+    queryFn: getArticleById,
+  })
+
+  ...
+}
+```
+
+##### [依赖查询和代码拆分](https://tanstack.com/query/latest/docs/framework/react/guides/prefetching#dependent-queries--code-splitting)
+
+有时我们希望根据另一个 fetch 的结果有条件地进行预加载。参考[性能与请求瀑布指南](https://tanstack.com/query/latest/docs/framework/react/guides/request-waterfalls)中的这个例子：
+
+```tsx
+// This lazy loads the GraphFeedItem component, meaning
+// it wont start loading until something renders it
+const GraphFeedItem = React.lazy(() => import('./GraphFeedItem'))
+
+function Feed() {
+  const { data, isPending } = useQuery({
+    queryKey: ['feed'],
+    queryFn: getFeed,
+  })
+
+  if (isPending) {
+    return 'Loading feed...'
+  }
+
+  return (
+    <>
+      {data.map((feedItem) => {
+        if (feedItem.type === 'GRAPH') {
+          return <GraphFeedItem key={feedItem.id} feedItem={feedItem} />
+        }
+
+        return <StandardFeedItem key={feedItem.id} feedItem={feedItem} />
+      })}
+    </>
+  )
+}
+
+// GraphFeedItem.tsx
+function GraphFeedItem({ feedItem }) {
+  const { data, isPending } = useQuery({
+    queryKey: ['graph', feedItem.id],
+    queryFn: getGraphDataById,
+  })
+
+  ...
+}
+```
+
+如果我们不能重构 API，让getFeed()在必要时也返回getGraphDataById() 的数据，那么就无法摆脱getFeed->getGraphDataById 的瀑布式加载。但通过利用条件预取，我们至少可以并行加载代码和数据。如上所述，有很多方法可以做到这一点，但在本例中，我们将在查询函数中执行：
+
+```tsx
+function Feed() {
+  const queryClient = useQueryClient()
+  const { data, isPending } = useQuery({
+    queryKey: ['feed'],
+    queryFn: async (...args) => {
+      const feed = await getFeed(...args)
+
+      for (const feedItem of feed) {
+        if (feedItem.type === 'GRAPH') {
+          queryClient.prefetchQuery({
+            queryKey: ['graph', feedItem.id],
+            queryFn: getGraphDataById,
+          })
+        }
+      }
+
+      return feed
+    }
+  })
+
+  ...
+}
+```
+
+#### [路由器集成](https://tanstack.com/query/latest/docs/framework/react/guides/prefetching#router-integration)
+
+由于组件树本身中的数据提取很容易导致请求瀑布，并且在整个应用程序中累积的不同修复可能会很麻烦，因此进行预取的一种有吸引力的方法是将其集成在路由器级别。
+
+```tsx
+const queryClient = new QueryClient()
+const routerContext = new RouterContext()
+const rootRoute = routerContext.createRootRoute({
+  component: () => { ... }
+})
+
+const articleRoute = new Route({
+  getParentRoute: () => rootRoute,
+  path: 'article',
+  beforeLoad: () => {
+    return {
+      articleQueryOptions: { queryKey: ['article'], queryFn: fetchArticle },
+      commentsQueryOptions: { queryKey: ['comments'], queryFn: fetchComments },
+    }
+  },
+  loader: async ({
+    context: { queryClient },
+    routeContext: { articleQueryOptions, commentsQueryOptions },
+  }) => {
+    // Fetch comments asap, but don't block
+    queryClient.prefetchQuery(commentsQueryOptions)
+
+    // Don't render the route at all until article has been fetched
+    await queryClient.prefetchQuery(articleQueryOptions)
+  },
+  component: ({ useRouteContext }) => {
+    const { articleQueryOptions, commentsQueryOptions } = useRouteContext()
+    const articleQuery = useQuery(articleQueryOptions)
+    const commentsQuery = useQuery(commentsQueryOptions)
+
+    return (
+      ...
+    )
+  },
+  errorComponent: () => 'Oh crap!',
+})
+```
+
+
+
 ### **缓存**
 
 假设我们使用默认的gcTime为**5 分钟**，默认的staleTime为0。
@@ -1381,6 +1640,8 @@ function Comp() {
 
 #### [NavigateOptions接口](https://tanstack.com/router/latest/docs/framework/react/guide/navigation#navigateoptions-interface)
 
+这是扩展ToOptions 的核心NavigateOptions接口。任何实际执行导航的 API 都会使用此接口
+
 ```tsx
 export type NavigateOptions<
   TRouteTree extends AnyRoute = AnyRoute,
@@ -1406,6 +1667,8 @@ export type NavigateOptions<
 
 #### [LinkOptions接口](https://tanstack.com/router/latest/docs/framework/react/guide/navigation#linkoptions-interface)
 
+任何实际的<a>标签都可以使用扩展NavigateOptions 的LinkOptions接口：
+
 ```tsx
 export type LinkOptions<
   TRouteTree extends AnyRoute = AnyRoute,
@@ -1429,6 +1692,48 @@ export type LinkOptions<
   disabled?: boolean
 }
 ```
+使用linkOptions函数创建可重复使用的选项
+``` tsx
+const dashboardLinkOptions = linkOptions({
+  to: '/dashboard',
+  search: { search: '' },
+})
+
+function DashboardComponent() {
+  return <Link {...dashboardLinkOptions} />
+}
+```
+这允许对dashboardLinkOptions进行热切类型检查，然后可以在任何地方重复使用
+
+``` tsx
+const dashboardLinkOptions = linkOptions({
+  to: '/dashboard',
+  search: { search: '' },
+})
+
+export const Route = createFileRoute('/dashboard')({
+  component: DashboardComponent,
+  validateSearch: (input) => ({ search: input.search }),
+  beforeLoad: () => {
+    // can used in redirect
+    throw redirect(dashboardLinkOptions)
+  },
+})
+
+function DashboardComponent() {
+  const navigate = useNavigate()
+
+  return (
+    <div>
+      {/** can be used in navigate */}
+      <button onClick={() => navigate(dashboardLinkOptions)} />
+
+      {/** can be used in Link */}
+      <Link {...dashboardLinkOptions} />
+    </div>
+  )
+}
+```
 
 #### [导航API](https://tanstack.com/router/latest/docs/framework/react/guide/navigation#navigation-api)
 
@@ -1446,3 +1751,503 @@ export type LinkOptions<
 ##### [link组件](https://tanstack.com/router/latest/docs/framework/react/guide/navigation#link-component)
 
 Link组件是应用内最常用的导航方式。它会渲染一个实际的<a>标签，并赋予其有效的href属性，点击即可打开新标签页，甚至可以使用 cmd/ctrl + 点击来打开新标签页。它还支持所有常规的<a>属性，包括在新窗口中打开链接的目标等。
+
+###### 绝对链接
+``` tsx
+import { Link } from '@tanstack/react-router'
+
+const link = <Link to="/about">About</Link>
+```
+###### 动态链接
+``` tsx
+const link = (
+  <Link
+    to="/blog/post/$postId"
+    params={{
+      postId: 'my-first-blog-post',
+    }}
+  >
+    Blog Post
+  </Link>
+)
+```
+###### 相对链接
+默认情况下，除非提供from路由路径，否则所有链接都是绝对链接。这意味着无论您当前位于哪个路由，上述链接始终都会导航到/about路由。
+
+相对链接可以与from路由路径组合使用。如果没有提供 from 路由路径，则相对路径默认为当前活动位置。
+``` tsx
+const postIdRoute = createRoute({
+  path: '/blog/post/$postId',
+})
+
+const link = (
+  <Link from={postIdRoute.fullPath} to="../categories">
+    Categories
+  </Link>
+)
+```
+###### 特殊相对路径：“.”和“..”
+很多时候，你可能想要重新加载当前位置或其他来源路径，例如，在当前路由和/或父路由上重新运行加载器，或者导航回父路由。这可以通过指定目标路由路径为“.”来实现，这将重新加载当前位置或指定的来源路径。
+另一个常见的需求是将一个路由导航回相对于当前位置或另一条路径。通过指定“..”作为路由路径，导航将被解析到当前位置之前的第一个父路由。
+``` tsx
+export const Route = createFileRoute('/posts/$postId')({
+  component: PostComponent,
+})
+
+function PostComponent() {
+  return (
+    <div>
+      <Link to=".">Reload the current route of /posts/$postId</Link>
+      <Link to="..">Navigate back to /posts</Link>
+      // the below are all equivalent
+      <Link to="/posts">Navigate back to /posts</Link>
+      <Link from="/posts" to=".">
+        Navigate back to /posts
+      </Link>
+      // the below are all equivalent
+      <Link to="/">Navigate to root</Link>
+      <Link from="/posts" to="..">
+        Navigate to root
+      </Link>
+    </div>
+  )
+}
+```
+###### 搜索参数链接
+``` tsx
+const link = (
+  <Link
+    to="/search"
+    search={{
+      query: 'tanstack',
+    }}
+  >
+    Search
+  </Link>
+)
+```
+更新单个搜索参数而不提供现有路由的任何其他信息也很常见。例如，你可能想要更新搜索结果的页码：
+``` tsx
+const link = (
+  <Link
+    to="."
+    search={(prev) => ({
+      ...prev,
+      page: prev.page + 1,
+    })}
+  >
+    Next Page
+  </Link>
+)
+```
+###### 哈希链接
+``` tsx
+const link = (
+  <Link
+    to="/blog/post/$postId"
+    params={{
+      postId: 'my-first-blog-post',
+    }}
+    hash="section-1"
+  >
+    Section 1
+  </Link>
+)
+```
+###### 使用可选参数导航
+可选路径参数提供灵活的导航模式，您可以根据需要添加或省略参数。可选参数使用{-$paramName}语法，并提供对 URL 结构的细粒度控制。
+
+参数继承与移除
+使用可选参数导航时，有两种主要策略：
+
+继承当前参数 使用params: {}继承所有当前路由参数：
+``` tsx
+// Inherits current route parameters
+<Link to="/posts/{-$category}" params={{}}>
+  All Posts
+</Link>
+```
+删除参数
+将参数设置为未定义以明确删除它们：
+``` tsx
+// Removes the category parameter
+<Link to="/posts/{-$category}" params={{ category: undefined }}>
+  All Posts
+</Link>
+```
+
+``` tsx
+// Navigate with optional parameter
+<Link
+  to="/posts/{-$category}"
+  params={{ category: 'tech' }}
+>
+  Tech Posts
+</Link>
+
+// Navigate without optional parameter
+<Link
+  to="/posts/{-$category}"
+  params={{ category: undefined }}
+>
+  All Posts
+</Link>
+
+// Navigate using parameter inheritance
+<Link
+  to="/posts/{-$category}"
+  params={{}}
+>
+  Current Category
+</Link>
+```
+
+函数式参数更新
+``` tsx
+// Remove a parameter using function syntax
+<Link
+  to="/posts/{-$category}"
+  params={(prev) => ({ ...prev, category: undefined })}
+>
+  Clear Category
+</Link>
+
+// Update a parameter while keeping others
+<Link
+  to="/articles/{-$category}/{-$slug}"
+  params={(prev) => ({ ...prev, category: 'news' })}
+>
+  News Articles
+</Link>
+
+// Conditionally set parameters
+<Link
+  to="/posts/{-$category}"
+  params={(prev) => ({
+    ...prev,
+    category: someCondition ? 'tech' : undefined
+  })}
+>
+  Conditional Category
+</Link>
+```
+###### 带有可选参数的命令式导航
+``` tsx
+function Component() {
+  const navigate = useNavigate()
+
+  const clearFilters = () => {
+    navigate({
+      to: '/posts/{-$category}/{-$tag}',
+      params: { category: undefined, tag: undefined },
+    })
+  }
+
+  const setCategory = (category: string) => {
+    navigate({
+      to: '/posts/{-$category}/{-$tag}',
+      params: (prev) => ({ ...prev, category }),
+    })
+  }
+
+  const applyFilters = (category?: string, tag?: string) => {
+    navigate({
+      to: '/posts/{-$category}/{-$tag}',
+      params: { category, tag },
+    })
+  }
+}
+```
+###### 链接预加载
+Link组件支持在 Intent 触发时自动预加载路由（目前支持悬停或触摸启动）。
+``` tsx
+const link = (
+  <Link to="/blog/post/$postId" preload="intent">
+    Blog Post
+  </Link>
+)
+```
+通过启用预加载和相对较快的异步路由依赖关系（如果有），这个简单的技巧可以以很少的努力提高应用程序的感知性能。
+
+更好的是，通过使用像@tanstack/query这样的缓存优先库，预加载的路线将保留下来，如果用户决定稍后导航到该路线，则可以为重新验证时的陈旧体验做好准备。
+###### 链接预加载超时
+除了预加载之外，还有一个可配置的超时时间，用于确定用户必须将鼠标悬停在链接上多长时间才能触发基于意图的预加载。默认超时时间为 50 毫秒，但您可以通过将preloadTimeout属性传递给Link组件来更改此设置，该属性包含您希望等待的毫秒数：
+``` tsx
+const link = (
+  <Link to="/blog/post/$postId" preload="intent" preloadTimeout={100}>
+    Blog Post
+  </Link>
+)
+```
+##### useNavigate
+``` tsx
+function Component() {
+  const navigate = useNavigate({ from: '/posts/$postId' })
+
+  const handleSubmit = async (e: FrameworkFormEvent) => {
+    e.preventDefault()
+
+    const response = await fetch('/posts', {
+      method: 'POST',
+      body: JSON.stringify({ title: 'My First Post' }),
+    })
+
+    const { id: postId } = await response.json()
+
+    if (response.ok) {
+      navigate({ to: '/posts/$postId', params: { postId } })
+    }
+  }
+}
+```
+### 路径参数
+#### 加载器中的路径参数
+路径参数以params对象的形式传递给加载器。该对象的键是路径参数的名称，值是从实际 URL 路径解析出来的值。例如，如果我们要访问/blog/123 URL，则params对象将是{ postId: '123' }：
+``` tsx
+export const Route = createFileRoute('/posts/$postId')({
+  loader: async ({ params }) => {
+    return fetchPost(params.postId)
+  },
+})
+```
+loader的核心使用场景
+- 动态路由的详情页数据加载（最典型场景）
+  当页面需要根据 URL 中的动态参数（如文章 ID、用户 ID）展示特定内容时，loader可以自动根据参数加载对应数据，避免在组件内手动调用 API。
+  ``` tsx
+      // components/PostDetail.tsx
+    import { useLoaderData } from '@tanstack/react-router'
+
+    function PostDetail() {
+      // 获取 loader 加载的文章数据（类型自动推断为 fetchPost 的返回类型）
+      const post = useLoaderData<typeof Route>()
+
+      return (
+        <article>
+          <h1>{post.title}</h1>
+          <div>{post.content}</div>
+        </article>
+      )
+    }
+
+    // 导出组件（供路由使用）
+    export default PostDetail
+    ```
+- 预加载数据以提升用户体验​
+  loader会在路由匹配时自动触发数据加载，因此当用户导航到目标路由时，数据可能已在加载中或已完成，避免组件渲染时出现「白屏」或「闪烁」。
+- 集中管理路由相关的数据逻辑​
+  对于复杂页面（如需要同时加载多个关联资源），loader可以将数据加载逻辑集中在路由配置中，避免分散在多个组件中，提高可维护性。
+
+#### TanStack Router 的 loader和 TanStack Query 
+TanStack Router 的 loader和 TanStack Query 常结合使用，以实现路由级数据预加载与组件级数据缓存的协同优化
+``` tsx
+// routes/posts/$postId.tsx
+import { createFileRoute } from '@tanstack/react-router'
+import { useQueryClient } from '@tanstack/react-query'
+import { fetchPost, fetchComments } from '@/api' // 假设的 API 函数
+
+// 定义路由配置
+export const Route = createFileRoute('/posts/$postId')({
+  // 路由级数据加载（预加载文章基本信息）
+  loader: async ({ params, queryClient }) => {
+    const { postId } = params 
+
+    // 1. 加载文章基本信息（必须，否则路由无法渲染）
+    const post = await fetchPost(postId)
+    if (!post) throw new Error('文章不存在')
+
+    // 2. （可选）预加载评论数据到 TanStack Query 缓存（提升组件渲染速度）
+    // 注意：这里不直接返回评论，而是将其存入 Query 缓存，组件中通过 useQuery 获取
+    const queryClient = useQueryClient()
+    await queryClient.prefetchQuery({
+      queryKey: ['comments', postId],
+      queryFn: () => fetchComments(postId),
+    })
+
+    // 返回文章基本信息（会被路由上下文缓存）
+    return { post }
+  },
+
+  // 错误处理组件
+  errorElement: <div>文章加载失败</div>,
+
+  // 路由对应的组件
+  component: PostDetail,
+})
+```
+``` tsx
+// components/PostDetail.tsx
+import { useLoaderData, Link } from '@tanstack/react-router'
+import { useQuery } from '@tanstack/react-query'
+import { fetchComments } from '@/api'
+
+function PostDetail() {
+  // 1. 获取路由 loader 预加载的文章基本信息（必选）
+  const { post } = useLoaderData<typeof Route>()
+
+  // 2. 使用 TanStack Query 获取评论列表（数据已由 loader 预加载到缓存）
+  const { data: comments, isLoading: isCommentsLoading } = useQuery({
+    queryKey: ['comments', post.id], // 与 loader 中预加载的 queryKey 一致
+    queryFn: () => fetchComments(post.id), // 与 loader 中的 queryFn 一致
+    // 启用缓存（默认 true），即使组件重新渲染也会复用缓存
+    staleTime: 5 * 60 * 1000, // 数据保持新鲜 5 分钟
+  })
+
+  if (isCommentsLoading) {
+    return <div>加载评论中...</div>
+  }
+
+  return (
+    <article>
+      {/* 文章基本信息（来自 loader） */}
+      <h1>{post.title}</h1>
+      <div>{post.content}</div>
+
+      {/* 评论列表（来自 TanStack Query） */}
+      <section>
+        <h2>评论（{comments?.length || 0}）</h2>
+        <ul>
+          {comments?.map(comment => (
+            <li key={comment.id}>{comment.text}</li>
+          ))}
+        </ul>
+      </section>
+
+      {/* 返回列表页的链接 */}
+      <Link to="/posts" relative="path">
+        ← 返回文章列表
+      </Link>
+    </article>
+  )
+}
+
+export default PostDetail
+```
+#### 组件中的路径参数
+如果我们向postRoute添加一个组件，我们就可以使用路由的useParams钩子从 URL访问postId变量：
+``` tsx
+export const Route = createFileRoute('/posts/$postId')({
+  component: PostComponent,
+})
+
+function PostComponent() {
+  const { postId } = Route.useParams()
+  return <div>Post {postId}</div>
+}
+```
+使用getRouteApi助手手动访问其他文件中的路由 API
+``` tsx
+import { createRoute } from '@tanstack/react-router'
+import { MyComponent } from './MyComponent'
+
+const route = createRoute({
+  path: '/my-route',
+  loader: () => ({
+    foo: 'bar',
+  }),
+  component: MyComponent,
+})
+```
+``` tsx
+import { getRouteApi } from '@tanstack/react-router'
+
+const route = getRouteApi('/my-route')
+
+export function MyComponent() {
+  const loaderData = route.useLoaderData()
+  //    ^? { foo: string }
+
+  return <div>...</div>
+}
+```
+getRouteApi函数对于访问其他类型安全的 API 很有用：
+
+- useLoaderData
+- useLoaderDeps
+- useMatch
+- useParams
+- useRouteContext
+- useSearch
+
+### 搜索参数
+#### JSON 优先搜索参数
+为了实现上述目标，TanStack Router 内置的第一步是强大的搜索参数解析器，它可以自动将 URL 的搜索字符串转换为结构化的 JSON。这意味着您可以在搜索参数中存储任何可 JSON 序列化的数据结构，并将其解析并序列化为 JSON。相比于URLSearchParams ，这是一个巨大的改进，因为 URLSearchParams 对数组结构和嵌套数据的支持有限。
+``` tsx
+const link = (
+  <Link
+    to="/shop"
+    search={{
+      pageIndex: 3,
+      includeCategories: ['electronics', 'gifts'],
+      sortBy: 'price',
+      desc: true,
+    }}
+  />
+)
+```
+将产生以下 URL：
+```
+/shop?pageIndex=3&includeCategories=%5B%22electronics%22%2C%22gifts%22%5D&sortBy=price&desc=true
+```
+当解析此 URL 时，搜索参数将被准确地转换回以下 JSON：
+``` json
+{
+  "pageIndex": 3,
+  "includeCategories": ["electronics", "gifts"],
+  "sortBy": "price",
+  "desc": true
+}
+
+```
+如果你注意到的话，这里发生了几件事：
+
+- 搜索参数的第一级是平面的、基于字符串的，就像URLSearchParams一样。
+- 第一级非字符串值被准确地保存为实际数字和布尔值。
+- 嵌套数据结构自动转换为 URL 安全的 JSON 字符串
+
+#### 输入验证 + TypeScript！
+TanStack Router 提供了便捷的 API 来验证和输入搜索参数。这一切都始于Route的validateSearch选项：
+``` tsx
+// /routes/shop.products.tsx
+
+type ProductSearchSortOptions = 'newest' | 'oldest' | 'price'
+
+type ProductSearch = {
+  page: number
+  filter: string
+  sort: ProductSearchSortOptions
+}
+
+export const Route = createFileRoute('/shop/products')({
+  validateSearch: (search: Record<string, unknown>): ProductSearch => {
+    // validate and parse the search params into a typed state
+    return {
+      page: Number(search?.page ?? 1),
+      filter: (search.filter as string) || '',
+      sort: (search.sort as ProductSearchSortOptions) || 'newest',
+    }
+  },
+})
+```
+### 自定义链接
+``` tsx
+import * as React from 'react'
+import { createLink, LinkComponent } from '@tanstack/react-router'
+
+interface BasicLinkProps extends React.AnchorHTMLAttributes<HTMLAnchorElement> {
+  // Add any additional props you want to pass to the anchor element
+}
+
+const BasicLinkComponent = React.forwardRef<HTMLAnchorElement, BasicLinkProps>(
+  (props, ref) => {
+    return (
+      <a ref={ref} {...props} className={'block px-3 py-2 text-blue-700'} />
+    )
+  },
+)
+
+const CreatedLinkComponent = createLink(BasicLinkComponent)
+
+export const CustomLink: LinkComponent<typeof BasicLinkComponent> = (props) => {
+  return <CreatedLinkComponent preload={'intent'} {...props} />
+}
+```

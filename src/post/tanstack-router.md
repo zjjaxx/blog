@@ -334,9 +334,7 @@ export type LinkOptions<
   disabled?: boolean
 }
 ```
-
 使用linkOptions函数创建可重复使用的选项
-
 ``` tsx
 const dashboardLinkOptions = linkOptions({
   to: '/dashboard',
@@ -347,7 +345,6 @@ function DashboardComponent() {
   return <Link {...dashboardLinkOptions} />
 }
 ```
-
 这允许对dashboardLinkOptions进行热切类型检查，然后可以在任何地方重复使用
 
 ``` tsx
@@ -398,15 +395,12 @@ function DashboardComponent() {
 Link组件是应用内最常用的导航方式。它会渲染一个实际的`<a>`标签，并赋予其有效的href属性，点击即可打开新标签页，甚至可以使用 cmd/ctrl + 点击来打开新标签页。它还支持所有常规的`<a>`属性，包括在新窗口中打开链接的目标等。
 
 ###### 绝对链接
-
 ``` tsx
 import { Link } from '@tanstack/react-router'
 
 const link = <Link to="/about">About</Link>
 ```
-
 ###### 动态链接
-
 ``` tsx
 const link = (
   <Link
@@ -419,13 +413,10 @@ const link = (
   </Link>
 )
 ```
-
 ###### 相对链接
-
 默认情况下，除非提供from路由路径，否则所有链接都是绝对链接。这意味着无论您当前位于哪个路由，上述链接始终都会导航到/about路由。
 
 相对链接可以与from路由路径组合使用。如果没有提供 from 路由路径，则相对路径默认为当前活动位置。
-
 ``` tsx
 const postIdRoute = createRoute({
   path: '/blog/post/$postId',
@@ -437,12 +428,9 @@ const link = (
   </Link>
 )
 ```
-
 ###### 特殊相对路径：“.”和“..”
-
 很多时候，你可能想要重新加载当前位置或其他来源路径，例如，在当前路由和/或父路由上重新运行加载器，或者导航回父路由。这可以通过指定目标路由路径为“.”来实现，这将重新加载当前位置或指定的来源路径。
 另一个常见的需求是将一个路由导航回相对于当前位置或另一条路径。通过指定“..”作为路由路径，导航将被解析到当前位置之前的第一个父路由。
-
 ``` tsx
 export const Route = createFileRoute('/posts/$postId')({
   component: PostComponent,
@@ -467,9 +455,7 @@ function PostComponent() {
   )
 }
 ```
-
 ###### 搜索参数链接
-
 ``` tsx
 const link = (
   <Link
@@ -482,9 +468,7 @@ const link = (
   </Link>
 )
 ```
-
 更新单个搜索参数而不提供现有路由的任何其他信息也很常见。例如，你可能想要更新搜索结果的页码：
-
 ``` tsx
 const link = (
   <Link
@@ -498,9 +482,7 @@ const link = (
   </Link>
 )
 ```
-
 ###### 哈希链接
-
 ``` tsx
 const link = (
   <Link
@@ -514,26 +496,21 @@ const link = (
   </Link>
 )
 ```
-
 ###### 使用可选参数导航
-
 可选路径参数提供灵活的导航模式，您可以根据需要添加或省略参数。可选参数使用{-$paramName}语法，并提供对 URL 结构的细粒度控制。
 
 参数继承与移除
 使用可选参数导航时，有两种主要策略：
 
 继承当前参数 使用params: {}继承所有当前路由参数：
-
 ``` tsx
 // Inherits current route parameters
 <Link to="/posts/{-$category}" params={{}}>
   All Posts
 </Link>
 ```
-
 删除参数
 将参数设置为未定义以明确删除它们：
-
 ``` tsx
 // Removes the category parameter
 <Link to="/posts/{-$category}" params={{ category: undefined }}>
@@ -568,7 +545,6 @@ const link = (
 ```
 
 函数式参数更新
-
 ``` tsx
 // Remove a parameter using function syntax
 <Link
@@ -597,9 +573,7 @@ const link = (
   Conditional Category
 </Link>
 ```
-
 ###### 带有可选参数的命令式导航
-
 ``` tsx
 function Component() {
   const navigate = useNavigate()
@@ -626,11 +600,8 @@ function Component() {
   }
 }
 ```
-
 ###### 链接预加载
-
 Link组件支持在 Intent 触发时自动预加载路由（目前支持悬停或触摸启动）。
-
 ``` tsx
 const link = (
   <Link to="/blog/post/$postId" preload="intent">
@@ -638,15 +609,11 @@ const link = (
   </Link>
 )
 ```
-
 通过启用预加载和相对较快的异步路由依赖关系（如果有），这个简单的技巧可以以很少的努力提高应用程序的感知性能。
 
 更好的是，通过使用像@tanstack/query这样的缓存优先库，预加载的路线将保留下来，如果用户决定稍后导航到该路线，则可以为重新验证时的陈旧体验做好准备。
-
 ###### 链接预加载超时
-
 除了预加载之外，还有一个可配置的超时时间，用于确定用户必须将鼠标悬停在链接上多长时间才能触发基于意图的预加载。默认超时时间为 50 毫秒，但您可以通过将preloadTimeout属性传递给Link组件来更改此设置，该属性包含您希望等待的毫秒数：
-
 ``` tsx
 const link = (
   <Link to="/blog/post/$postId" preload="intent" preloadTimeout={100}>
@@ -654,9 +621,7 @@ const link = (
   </Link>
 )
 ```
-
 ##### useNavigate
-
 ``` tsx
 function Component() {
   const navigate = useNavigate({ from: '/posts/$postId' })
@@ -677,13 +642,9 @@ function Component() {
   }
 }
 ```
-
 ### 路径参数
-
 #### 加载器中的路径参数
-
 路径参数以params对象的形式传递给加载器。该对象的键是路径参数的名称，值是从实际 URL 路径解析出来的值。例如，如果我们要访问/blog/123 URL，则params对象将是{ postId: '123' }：
-
 ``` tsx
 export const Route = createFileRoute('/posts/$postId')({
   loader: async ({ params }) => {
@@ -691,12 +652,9 @@ export const Route = createFileRoute('/posts/$postId')({
   },
 })
 ```
-
 loader的核心使用场景
-
 - 动态路由的详情页数据加载（最典型场景）
   当页面需要根据 URL 中的动态参数（如文章 ID、用户 ID）展示特定内容时，loader可以自动根据参数加载对应数据，避免在组件内手动调用 API。
-
   ``` tsx
       // components/PostDetail.tsx
     import { useLoaderData } from '@tanstack/react-router'
@@ -716,17 +674,13 @@ loader的核心使用场景
     // 导出组件（供路由使用）
     export default PostDetail
   ```
-
 - 预加载数据以提升用户体验​
   loader会在路由匹配时自动触发数据加载，因此当用户导航到目标路由时，数据可能已在加载中或已完成，避免组件渲染时出现「白屏」或「闪烁」。
-
 - 集中管理路由相关的数据逻辑​
   对于复杂页面（如需要同时加载多个关联资源），loader可以将数据加载逻辑集中在路由配置中，避免分散在多个组件中，提高可维护性。
 
 #### TanStack Router 的 loader和 TanStack Query 
-
 TanStack Router 的 loader和 TanStack Query 常结合使用，以实现路由级数据预加载与组件级数据缓存的协同优化
-
 ``` tsx
 // routes/posts/$postId.tsx
 import { createFileRoute } from '@tanstack/react-router'
@@ -762,7 +716,6 @@ export const Route = createFileRoute('/posts/$postId')({
   component: PostDetail,
 })
 ```
-
 ``` tsx
 // components/PostDetail.tsx
 import { useLoaderData, Link } from '@tanstack/react-router'
@@ -811,11 +764,8 @@ function PostDetail() {
 
 export default PostDetail
 ```
-
 #### 组件中的路径参数
-
 如果我们向postRoute添加一个组件，我们就可以使用路由的useParams钩子从 URL访问postId变量：
-
 ``` tsx
 export const Route = createFileRoute('/posts/$postId')({
   component: PostComponent,
@@ -826,9 +776,7 @@ function PostComponent() {
   return <div>Post {postId}</div>
 }
 ```
-
 使用getRouteApi助手手动访问其他文件中的路由 API
-
 ``` tsx
 import { createRoute } from '@tanstack/react-router'
 import { MyComponent } from './MyComponent'
@@ -841,7 +789,6 @@ const route = createRoute({
   component: MyComponent,
 })
 ```
-
 ``` tsx
 import { getRouteApi } from '@tanstack/react-router'
 
@@ -854,7 +801,6 @@ export function MyComponent() {
   return <div>...</div>
 }
 ```
-
 getRouteApi函数对于访问其他类型安全的 API 很有用：
 
 - useLoaderData
@@ -865,11 +811,8 @@ getRouteApi函数对于访问其他类型安全的 API 很有用：
 - useSearch
 
 ### 搜索参数
-
 #### JSON 优先搜索参数
-
 为了实现上述目标，TanStack Router 内置的第一步是强大的搜索参数解析器，它可以自动将 URL 的搜索字符串转换为结构化的 JSON。这意味着您可以在搜索参数中存储任何可 JSON 序列化的数据结构，并将其解析并序列化为 JSON。相比于URLSearchParams ，这是一个巨大的改进，因为 URLSearchParams 对数组结构和嵌套数据的支持有限。
-
 ``` tsx
 const link = (
   <Link
@@ -883,15 +826,11 @@ const link = (
   />
 )
 ```
-
 将产生以下 URL：
-
 ```
 /shop?pageIndex=3&includeCategories=%5B%22electronics%22%2C%22gifts%22%5D&sortBy=price&desc=true
 ```
-
 当解析此 URL 时，搜索参数将被准确地转换回以下 JSON：
-
 ``` json
 {
   "pageIndex": 3,
@@ -901,7 +840,6 @@ const link = (
 }
 
 ```
-
 如果你注意到的话，这里发生了几件事：
 
 - 搜索参数的第一级是平面的、基于字符串的，就像URLSearchParams一样。
@@ -909,9 +847,7 @@ const link = (
 - 嵌套数据结构自动转换为 URL 安全的 JSON 字符串
 
 #### 输入验证 + TypeScript！
-
 TanStack Router 提供了便捷的 API 来验证和输入搜索参数。这一切都始于Route的validateSearch选项：
-
 ``` tsx
 // /routes/shop.products.tsx
 
@@ -934,9 +870,7 @@ export const Route = createFileRoute('/shop/products')({
   },
 })
 ```
-
 ### 自定义链接
-
 ``` tsx
 import * as React from 'react'
 import { createLink, LinkComponent } from '@tanstack/react-router'
@@ -1138,5 +1072,5 @@ function MyComponent() {
 }
 ```
 
-### [**经过身份验证的路由**](cn.vuejs.org/guide/extras/render-function.html#jsx-type-inference) 
+### [**经过身份验证的路由**](https://tanstack.com/router/latest/docs/framework/react/guide/authenticated-routes)
 

@@ -1138,5 +1138,5 @@ function MyComponent() {
 }
 ```
 
-### [**经过身份验证的路由**](cn.vuejs.org/guide/extras/render-function.html#jsx-type-inference)
+### [**经过身份验证的路由**](cn.vuejs.org/guide/extras/render-function.html#jsx-type-inference) 
 

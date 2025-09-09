@@ -51,6 +51,7 @@ export default defineConfig({
           {text:"shadcn组件库",link:"/shadcn组件库"},
           {text:"tanstack-query",link:"/tanstack-query"},
           {text:"tanstack-router",link:"/tanstack-router"},
+          {text:"tanstack-table",link:"/tanstack-table"},
           { text: "算法", link: "/算法" },
           { text: "gsap", link: "/gsap" },
           { text: "JSONSchema", link: "/JSON-schema" },

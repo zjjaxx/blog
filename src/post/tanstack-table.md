@@ -898,25 +898,281 @@ type ColumnFiltersState = ColumnFilter[]
 const table = useReactTable({
   columns,
   data,
-  //...
-})
-
-console.log(table.getState().columnFilters) // access the column filters state from the table instance
-```
-
-
-
-```tsx
-const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]) // can set initial column filter state here
-//...
-const table = useReactTable({
-  columns,
-  data,
-  //...
   state: {
     columnFilters,
   },
   onColumnFiltersChange: setColumnFilters,
+  //...
+})
+
+console.log(table.getState().columnFilters) // access the column filters state from the table instance
+// 比如
+[
+    {
+        "id": "name",
+        "value": [
+            "http://10.3.0.5:9000/"
+        ]
+    }
+]
+```
+
+##### 列过滤器 API
+
+您可以使用许多列和表 API 来与列过滤器状态进行交互并连接到 UI 组件。以下是可用 API 及其最常见用例的列表：
+
+- table.setColumnFilters - 用新状态覆盖整个列过滤器状态
+
+- table.resetColumnFilters - 用于“清除所有/重置过滤器”按钮
+
+- **column.getFilterValue** - 用于获取输入的默认初始过滤器值，甚至直接向过滤器输入提供过滤器值
+
+  ```tsx
+   const column = table.getColumn(filter.columnId)
+   column?.getFilterValue()
+  ```
+
+- **column.setFilterValue** - 用于将过滤器输入连接到其onChange或onBlur处理程序
+
+- column.getCanFilter - 用于禁用/启用过滤器输入
+
+- column.getIsFiltered - 用于显示当前正在过滤列的视觉指示
+
+#### **全局过滤指南**
+
+全局过滤，即应用于所有列的过滤器。
+
+##### [手动服务器端全局过滤](https://tanstack.com/table/latest/docs/guide/global-filtering#manual-server-side-global-filtering)
+
+手动服务器端全局过滤不需要getFilteredRowModel表选项。您传递给表的数据应该已经过滤过了。但是，如果您已经传递了getFilteredRowModel表选项，则可以通过将manualFiltering选项设置为true来让表跳过该操作。
+
+```tsx
+const table = useReactTable({
+  data,
+  columns,
+  // getFilteredRowModel: getFilteredRowModel(), // not needed for manual server-side global filtering
+  manualFiltering: true,
 })
 ```
 
+##### [全局过滤器状态](https://tanstack.com/table/latest/docs/guide/global-filtering#global-filter-state)
+
+全局过滤器状态存储在表的内部状态中，可以通过 table.getState().globalFilter 属性访问。如果您想将全局过滤器状态持久化到表外部，可以使用 onGlobalFilterChange 选项提供一个回调函数，该函数会在全局过滤器状态发生变化时被调用。
+
+```tsx
+const [globalFilter, setGlobalFilter] = useState<any>([])
+
+const table = useReactTable({
+  // other options...
+  state: {
+    globalFilter,
+  },
+  onGlobalFilterChange: setGlobalFilter
+})
+```
+
+#### 分页
+
+##### [手动服务器端分页](https://tanstack.com/table/latest/docs/guide/pagination#manual-server-side-pagination)
+
+除非您告知，否则表实例无法知道后端总共有多少行/页。提供rowCount或pageCount表选项，让表实例知道总共有多少页。如果您提供rowCount，表实例将根据rowCount和pageSize在内部计算pageCount。否则，如果您已经拥有 pageCount ，则可以直接提供。如果您不知道页数，可以直接为pageCount传入-1，但在这种情况下，getCanNextPage和getCanPreviousPage行模型函数将始终返回true。
+
+```tsx
+import { useReactTable, getCoreRowModel, getPaginationRowModel } from '@tanstack/react-table';
+//...
+const table = useReactTable({
+  columns,
+  data,
+  getCoreRowModel: getCoreRowModel(),
+  // getPaginationRowModel: getPaginationRowModel(), //not needed for server-side pagination
+  manualPagination: true, //turn off client-side pagination
+  rowCount: dataQuery.data?.rowCount, //pass in the total row count so the table knows how many pages there are (pageCount calculated internally if not provided)
+  // pageCount: dataQuery.data?.pageCount, //alternatively directly pass in pageCount instead of rowCount
+});
+```
+
+##### [自动重置页面索引](https://tanstack.com/table/latest/docs/guide/pagination#auto-reset-page-index)
+
+默认情况下，当发生页面更改状态变化时， pageIndex会重置为0，例如当数据更新、过滤器更改、分组更改等时。当manualPagination为 true 时，此行为会自动禁用，但可以通过为autoResetPageIndex表选项明确分配布尔值来覆盖它。
+
+```tsx
+const table = useReactTable({
+  columns,
+  data,
+  getCoreRowModel: getCoreRowModel(),
+  getPaginationRowModel: getPaginationRowModel(),
+  autoResetPageIndex: false, //turn off auto reset of pageIndex
+});
+```
+
+##### [分页按钮 API](https://tanstack.com/table/latest/docs/guide/pagination#pagination-button-apis)
+
+- getCanPreviousPage：用于在第一页时禁用“上一页”按钮。
+- getCanNextPage：当没有更多页面时，可用于禁用“下一页”按钮。
+- previousPage：用于跳转到上一页。（按钮点击处理程序）
+- nextPage：用于进入下一页。（按钮点击处理程序）
+- firstPage：用于跳转到第一页。（按钮点击处理程序）
+- lastPage：用于跳转到最后一页。（按钮点击处理程序）
+- setPageIndex：对于“转到页面”输入有用。
+- resetPageIndex：用于将表状态重置为原始页面索引。
+- setPageSize：对于“页面大小”输入/选择有用。
+- resetPageSize：用于将表状态重置为原始页面大小。
+- setPagination：用于一次设置所有分页状态。
+- resetPagination：用于将表状态重置为原始分页状态。
+
+##### 分页信息 API
+
+- getPageCount：用于显示总页数。
+- getRowCount：用于显示总行数。
+
+#### [行选择指南](https://tanstack.com/table/latest/docs/guide/row-selection#row-selection-guide)
+
+##### [访问行选择状态](https://tanstack.com/table/latest/docs/guide/row-selection#access-row-selection-state)
+
+- getState().rowSelection - 返回内部行选择状态
+- getSelectedRowModel() - 返回选定的行
+- getFilteredSelectedRowModel() - 返回过滤后选定的行
+- getGroupedSelectedRowModel() - 分组和排序后返回选定的行
+
+##### [管理行选择状态](https://tanstack.com/table/latest/docs/guide/row-selection#manage-row-selection-state)
+
+尽管表实例已经为您管理行选择状态，但通常自己管理状态会更方便，以便轻松访问可用于进行 API 调用或其他操作的选定行 ID。
+
+使用onRowSelectionChange表选项将行选择状态提升到您自己的范围。然后使用状态表选项将行选择状态传递回表实例。
+
+```tsx
+const [rowSelection, setRowSelection] = useState<RowSelectionState>({}) //manage your own row selection state
+
+const table = useReactTable({
+  //...
+  onRowSelectionChange: setRowSelection, //hoist up the row selection state to your own scope
+  state: {
+    rowSelection, //pass the row selection state back to the table instance
+  },
+})
+// 示例
+{
+    "0": true,
+    "4": true,
+    "8": true
+}
+```
+
+##### [渲染行选择 UI](https://tanstack.com/table/latest/docs/guide/row-selection#render-row-selection-ui)
+
+使用row.getToggleSelectedHandler() API 连接到复选框输入以切换行的选择。
+
+使用table.getToggleAllRowsSelectedHandler()或table.getToggleAllPageRowsSelectedHandler API 连接到“全选”复选框输入以切换所有行的选择。
+
+如果您需要更精细地控制这些函数处理程序，您可以直接使用row.toggleSelected()或table.toggleAllRowsSelected() API。或者，您甚至可以像使用其他状态更新程序一样，直接调用table.setRowSelection() API 来设置行选择状态。这些处理程序函数只是为了方便使用。
+
+```tsx
+const columns = [
+  {
+    id: 'select-col',
+    header: ({ table }) => (
+      <Checkbox
+        checked={table.getIsAllRowsSelected()}
+        indeterminate={table.getIsSomeRowsSelected()}
+        onChange={table.getToggleAllRowsSelectedHandler()} //or getToggleAllPageRowsSelectedHandler
+      />
+    ),
+    cell: ({ row }) => (
+      <Checkbox
+        checked={row.getIsSelected()}
+        disabled={!row.getCanSelect()}
+        onChange={row.getToggleSelectedHandler()}
+      />
+    ),
+  },
+  //... more column definitions...
+]
+```
+
+#### 排序
+
+##### [排序状态](https://tanstack.com/table/latest/docs/guide/sorting#sorting-state)
+
+```tsx
+type ColumnSort = {
+  id: string
+  desc: boolean
+}
+type SortingState = ColumnSort[]
+```
+
+##### [访问排序状态](https://tanstack.com/table/latest/docs/guide/sorting#accessing-sorting-state)
+
+```tsx
+const table = useReactTable({
+  columns,
+  data,
+  //...
+})
+
+console.log(table.getState().sorting) // access the sorting state from the table instance
+```
+
+##### [手动服务器端排序](https://tanstack.com/table/latest/docs/guide/sorting#manual-server-side-sorting)
+
+如果您计划在后端逻辑中仅使用自己的服务器端排序，则无需提供排序行模型。但是，如果您已经提供了排序行模型，但想要禁用它，则可以使用manualSorting表选项
+
+```tsx
+const [sorting, setSorting] = useState<SortingState>([])
+//...
+const table = useReactTable({
+  columns,
+  data,
+  getCoreRowModel: getCoreRowModel(),
+  //getSortedRowModel: getSortedRowModel(), //not needed for manual sorting
+  manualSorting: true, //use pre-sorted row model instead of sorted row model
+  state: {
+    sorting,
+  },
+  onSortingChange: setSorting,
+})
+```
+
+##### 禁用排序
+
+您可以使用enableSorting列选项或表选项禁用特定列或整个表的排序。
+
+```tsx
+const columns = [
+  {
+    header: () => 'ID',
+    accessorKey: 'id',
+    enableSorting: false, // disable sorting for this column
+  },
+  {
+    header: () => 'Name',
+    accessorKey: 'name',
+  },
+  //...
+]
+//...
+const table = useReactTable({
+  columns,
+  data,
+  enableSorting: false, // disable sorting for the entire table
+})
+```
+
+##### [排序 API](https://tanstack.com/table/latest/docs/guide/sorting#sorting-apis)
+
+您可以使用许多与排序相关的 API 来连接到您的 UI 或其他逻辑。以下是所有排序 API 及其部分用例的列表。
+
+- table.setSorting - 直接设置排序状态。
+- table.resetSorting - 将排序状态重置为初始状态或清除它。
+- column.getCanSort - 用于启用/禁用列的排序 UI。
+- column.getIsSorted - 用于显示列的可视化排序指示器。
+- column.getToggleSortingHandler - 用于连接列的排序 UI。可以添加到排序箭头（图标按钮）、菜单项或整个列标题单元格。此处理程序将使用正确的参数调用column.toggleSorting 。
+- column.toggleSorting - 用于连接列的排序 UI。如果使用column.getToggleSortingHandler代替，则必须手动传入是否使用多重排序。( column.toggleSorting(desc, multi) )
+- column.clearSorting - 对于特定列的“清除排序”按钮或菜单项很有用。
+- column.getNextSortingOrder - 用于显示列下一步排序的方向。（在工具提示/菜单项/aria 标签或其他内容中按 asc/desc/clear 排序）
+- column.getFirstSortDir - 用于显示列首先按哪个方向排序。（工具提示/菜单项/aria 标签中的 asc/desc 或其他内容）
+- column.getAutoSortDir - 确定列的第一个排序方向是升序还是降序。
+- column.getAutoSortingFn - 如果未指定，则内部用于查找列的默认排序函数。
+- column.getSortingFn - 返回用于列的精确排序函数。
+- column.getCanMultiSort - 用于启用/禁用列的多重排序 UI。
+- column.getSortIndex - 用于在多排序场景中显示列排序顺序的徽章或指示器。即，它是否是第一、第二、第三等要排序的列。

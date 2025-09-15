@@ -1176,3 +1176,4 @@ const table = useReactTable({
 - column.getSortingFn - 返回用于列的精确排序函数。
 - column.getCanMultiSort - 用于启用/禁用列的多重排序 UI。
 - column.getSortIndex - 用于在多排序场景中显示列排序顺序的徽章或指示器。即，它是否是第一、第二、第三等要排序的列。
+

@@ -1068,6 +1068,12 @@ EnsureQueryData是一个异步函数，可用于获取现有查询的缓存数�
 
 #### **useSuspenseQuery**
 
+::: warning
+
+useSuspenseQuery 和 Suspense必须成对出现，不然会出问题。。。
+
+:::
+
 [与useQuery](https://tanstack.com/query/latest/docs/framework/react/reference/useQuery)相同
 
 

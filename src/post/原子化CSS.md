@@ -82,6 +82,20 @@ UnoCSS、Windi CSS 和 Tailwind CSS 都是现代原子化 CSS 解决方案，但
 
 [PostCSS Preset Env 的](https://github.com/csstools/postcss-plugins/tree/main/plugin-packs/postcss-preset-env)作用是获取来自 MDN 和 Can I Use 的支持数据，并根据[浏览器](https://github.com/browserslist/browserslist)列表判断是否需要进行这些转换。它还打包了[Autoprefixer](https://github.com/postcss/autoprefixer)并与其共享列表，因此只有在浏览器支持列表中需要时才会应用前缀。
 
+Autoprefixer 和 postcss-preset-env 是前端开发中常用的两个 PostCSS 插件，但它们的定位和功能存在显著差异。以下是两者的核心区别及适用场景分析：
+
+------
+
+### 一、核心功能对比
+
+| **功能维度**   | **Autoprefixer**                              | **postcss-preset-env**                            |
+| :------------- | :-------------------------------------------- | :------------------------------------------------ |
+| **核心目标**   | 自动添加浏览器前缀                            | 现代 CSS 特性转换 + 自动添加前缀                  |
+| **主要能力**   | 根据浏览器支持情况添加 `-webkit`/`-moz`等前缀 | 转换现代 CSS 语法（如变量、嵌套）并自动处理兼容性 |
+| **依赖关系**   | 独立插件                                      | 内置 Autoprefixer，整合其他 PostCSS 插件          |
+| **配置复杂度** | 需单独配置浏览器列表                          | 通过 Browserslist 统一配置，支持多工具共享        |
+| **适用场景**   | 仅需处理浏览器前缀                            | 需要转换现代语法（如 CSS Grid、自定义属性）       |
+
 :::
 
 ## css新特性
@@ -195,6 +209,117 @@ Tailwind 内部严重依赖 CSS 变量，因此如果您可以在项目中使用
 ```
 
 ### 核心概念
+
+#### 响应式
+
+[移动优先](https://tailwindcss.com/docs/responsive-design#working-mobile-first)
+
+Tailwind 使用移动优先断点系统，类似于您在 Bootstrap 等其他框架中使用的系统。
+
+这意味着不带前缀的实用程序（如`uppercase`）在所有屏幕尺寸上都会生效，而带前缀的实用程序（如）仅在指定的断点*及以上*`md:uppercase`才会生效。
+
+[瞄准移动屏幕](https://tailwindcss.com/docs/responsive-design#targeting-mobile-screens)
+
+这种方法最常让人感到惊讶的是，为了给移动设备设计样式，你需要使用实用程序的无前缀版本，而不是`sm:`带前缀的版本。不要把 理解`sm:`为“在小屏幕上”，而要理解为“在小*断点处*”。
+
+##### [定位断点范围](https://tailwindcss.com/docs/responsive-design#targeting-a-breakpoint-range)
+
+默认情况下，规则所应用的样式`md:flex`将在该断点处应用，并在更大的断点处保持应用。
+
+如果您只想在特定断点范围处于活动状态时应用实用程序*，*请将响应式变体`md`与`max-*`变体堆叠在一起，以将该样式限制在特定范围内：
+
+```html
+<div class="md:max-xl:flex">
+  <!-- ... -->
+</div>
+```
+
+| 断点前缀 | 最小宽度             | CSS                               |
+| -------- | -------------------- | --------------------------------- |
+| `sm`     | 40rem *（640像素）*  | `@media (width >= 40rem) { ... }` |
+| `md`     | 48rem *（768像素）*  | `@media (width >= 48rem) { ... }` |
+| `lg`     | 64rem *（1024像素）* | `@media (width >= 64rem) { ... }` |
+| `xl`     | 80rem *（1280像素）* | `@media (width >= 80rem) { ... }` |
+| `2xl`    | 96rem *（1536像素）* | `@media (width >= 96rem) { ... }` |
+
+Tailwind`max-*`为每个断点生成相应的变体，因此开箱即用，有以下变体可用：
+
+| 变体      | 媒体查询                         |
+| --------- | -------------------------------- |
+| `max-sm`  | `@media (width < 40rem) { ... }` |
+| `max-md`  | `@media (width < 48rem) { ... }` |
+| `max-lg`  | `@media (width < 64rem) { ... }` |
+| `max-xl`  | `@media (width < 80rem) { ... }` |
+| `max-2xl` | `@media (width < 96rem) { ... }` |
+
+##### [容器查询](https://tailwindcss.com/docs/responsive-design#container-queries)
+
+[容器查询](https://developer.mozilla.org/en-US/docs/Web/CSS/CSS_containment/Container_queries)是一项现代 CSS 功能，它允许您根据父元素的大小（而不是整个视口的大小）来设置样式。它允许您构建更加可移植和可复用的组件，因为它们可以根据组件的实际可用空间进行更改。
+
+使用`@container`类将元素标记为容器，然后使用类似`@sm`和的变体`@md`根据容器的大小设置子元素的样式：
+
+```html
+<div class="@container">
+  <div class="flex flex-col @md:flex-row">
+    <!-- ... -->
+  </div>
+</div>
+```
+
+[容器查询范围](https://tailwindcss.com/docs/responsive-design#container-query-ranges)
+
+```html
+<div class="@container">
+  <div class="flex flex-row @sm:@max-md:flex-col">
+    <!-- ... -->
+  </div>
+</div>
+```
+
+##### [命名容器](https://tailwindcss.com/docs/responsive-design#named-containers)
+
+对于使用多个嵌套容器的复杂设计，您可以使用 来命名容器，并使用和 等`@container/{name}`变体来定位特定容器：`@sm/{name}``@md/{name}`
+
+```html
+<div class="@container/main">
+  <!-- ... -->
+  <div class="flex flex-row @sm/main:flex-col">
+    <!-- ... -->
+  </div>
+</div>
+```
+
+##### [使用任意值](https://tailwindcss.com/docs/responsive-design#using-arbitrary-container-query-values)
+
+对于您不想添加到主题的一次性容器查询大小，请使用类似`@min-[475px]`和的变体：`@max-[960px]`
+
+```html
+<div class="@container">
+  <div class="flex flex-col @min-[475px]:flex-row">
+    <!-- ... -->
+  </div>
+</div>
+```
+
+##### [集装箱尺寸参考](https://tailwindcss.com/docs/responsive-design#container-size-reference)
+
+默认情况下，Tailwind 包含的容器尺寸范围从 16rem *（256px）*到 80rem *（1280px）*：
+
+| 变体   | 最小宽度             | CSS                                 |
+| ------ | -------------------- | ----------------------------------- |
+| `@3xs` | 16rem *（256像素）*  | `@container (width >= 16rem) { … }` |
+| `@2xs` | 18rem *（288像素）*  | `@container (width >= 18rem) { … }` |
+| `@xs`  | 20rem *（320像素）*  | `@container (width >= 20rem) { … }` |
+| `@sm`  | 24rem *（384像素）*  | `@container (width >= 24rem) { … }` |
+| `@md`  | 28rem *（448像素）*  | `@container (width >= 28rem) { … }` |
+| `@lg`  | 32rem *（512像素）*  | `@container (width >= 32rem) { … }` |
+| `@xl`  | 36rem *（576px）*    | `@container (width >= 36rem) { … }` |
+| `@2xl` | 42rem *（672px）*    | `@container (width >= 42rem) { … }` |
+| `@3xl` | 48rem *（768像素）*  | `@container (width >= 48rem) { … }` |
+| `@4xl` | 56rem *（896px）*    | `@container (width >= 56rem) { … }` |
+| `@5xl` | 64rem *（1024像素）* | `@container (width >= 64rem) { … }` |
+| `@6xl` | 72rem *（1152像素）* | `@container (width >= 72rem) { … }` |
+| `@7xl` | 80rem *（1280像素）* | `@container (width >= 80rem) { … }` |
 
 ::: tip
 

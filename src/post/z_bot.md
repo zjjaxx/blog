@@ -96,27 +96,6 @@ python manage.py runserver --noreload
 sudo yum install git -y
 ```
 
-### 安装aconda管理Python环境
-
-```bash
-./ *.sh
-source ~/.bashrc
-```
-
-```bash
-conda create -n name python=3.*
-conda activate name
-```
-
-**查看与删除**
-
-```bash
-conda env list          # 列出所有环境[2,8](@ref)
-conda remove -n py38 --all  # 彻底删除环境[6](@ref)
-```
-
-
-
 ### TA-Lib centos 部署
 
 ```bash
@@ -137,46 +116,26 @@ sudo ldconfig
 
 ### sqlite3升级
 
-#### 卸载旧版本（慎用！）
-
 ```bash
-sudo yum remove sqlite -y
-```
+# 安装依赖
+sudo apt-get update
+sudo apt-get install -y build-essential
 
-#### 安装编译依赖
+# 下载 SQLite 最新源码（以 3.44.2 为例）
+wget https://www.sqlite.org/2023/sqlite-autoconf-3440200.tar.gz
+tar xzf sqlite-autoconf-3440200.tar.gz
+cd sqlite-autoconf-3440200
 
-```
-sudo yum groupinstall 'Development Tools' -y
-sudo yum install tcl wget -y
-```
+# 编译安装
+./configure
+make && sudo make install
 
-#### 下载最新版（以 3.45.2 为例）
+# 创建符号链接（覆盖旧版本）
+sudo mv /usr/bin/sqlite3 /usr/bin/sqlite3_old
+sudo ln -s /usr/local/bin/sqlite3 /usr/bin/sqlite3
 
-```bash
-wget https://www.sqlite.org/2024/sqlite-autoconf-3450200.tar.gz
-tar xzvf sqlite-autoconf-3450200.tar.gz
-cd sqlite-autoconf-3450200
-```
-
-#### 编译安装
-
-```bash
-./configure --prefix=/usr/local --disable-static --enable-fts5
-make -j $(nproc)
-sudo make install
-```
-
-#### 更新库链接
-
-```bash
-echo '/usr/local/lib' | sudo tee /etc/ld.so.conf.d/sqlite.conf
+# 更新动态库缓存
 sudo ldconfig
-```
-
-#### 验证版本
-
-```bash
-/usr/local/bin/sqlite3 --version  # 应显示 3.45.2
 ```
 
 ### 依赖安装
@@ -188,10 +147,7 @@ pip install -r requirements.txt
 ### 生成requirements.txt依赖声明文件
 
 ```bash
-# 安装工具
-pip install pipreqs
-
-pipreqs ./ --force
+pigar generate     
 ```
 
 ### 安装corsheaders
@@ -204,7 +160,7 @@ pip install django-cors-headers
 
 比如添加一个字段或删除一个模型，然后运行 makemigrations：
 ```bash
-python manage.py makemigrations
+python manage.py makemigrations yourapp
 ```
 一旦您有了新的迁移文件，您应该将它们应用到您的数据库，以确保它们按预期工作：
 ```bash

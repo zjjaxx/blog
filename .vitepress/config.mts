@@ -63,6 +63,8 @@ export default defineConfig({
           { text: "Rollup", link: "/Rollup" },
           { text: "vitepress", link: "/vitepress" },
           { text: "vite模块联邦", link: "/vite模块联邦" },
+          { text: "python", link: "/python" },
+          { text: "motion", link: "/motion" },
         ],
       },
       {

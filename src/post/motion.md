@@ -664,5 +664,270 @@ function List() {
 }
 ```
 
+## 滚动动画
 
+滚动动画有两种类型：
+
+- **滚动触发：**当元素进入视口时触发正常动画。
+- **滚动链接：**值直接与滚动进度链接。
+
+### [滚动触发的动画](https://motion.dev/docs/react-scroll-animations#scroll-triggered-animations)
+
+滚动触发动画只是当元素进入或离开视口时触发的普通动画。
+
+当元素进入视图时，Motion 提供设置动画目标或变体[的道具](https://motion.dev/docs/react-motion-component#whileinview)[。](https://motion.dev/docs/react-motion-component#whileinview)`whileInView`
+
+```tsx
+<motion.div
+  initial={{ opacity: 0 }}
+  whileInView={{ opacity: 1 }}
+/>
+```
+
+### [一次性动画](https://motion.dev/docs/react-scroll-animations#one-time-animations)
+
+通过[选项](https://motion.dev/docs/react-motion-component#viewport-1)，可以进行设置`viewport`[，](https://motion.dev/docs/react-motion-component#viewport-1)`once: true`这样一旦元素进入视口，它就不会以动画形式返回。
+
+```tsx
+<motion.div
+  initial="hidden"
+  whileInView="visible"
+  viewport={{ once: true }}
+/>
+```
+
+### [更改滚动容器](https://motion.dev/docs/react-scroll-animations#changing-scroll-container)
+
+默认情况下，元素进入/离开**窗口**时将被视为在视口内。这可以通过提供`ref`另一个可滚动元素的 来更改。
+
+```tsx
+function Component() {
+  const scrollRef = useRef(null)
+  
+  return (
+    <div ref={scrollRef} style={{ overflow: "scroll" }}>
+      <motion.div
+        initial={{ opacity: 0 }}
+        whileInView={{ opacity: 1 }}
+        viewport={{ root: scrollRef }}
+      />
+    </div>
+  )
+}
+```
+
+### [滚动链接动画](https://motion.dev/docs/react-scroll-animations#scroll-linked-animations)
+
+滚动链接动画是使用[运动值](https://motion.dev/docs/react-motion-value)和`useScroll`[钩子](https://motion.dev/docs/react-use-scroll)创建的。
+
+useScroll`返回四个运动值，两个以像素为单位存储滚动偏移量（`scrollX`和），另外两个以介于和`scrollY`之间的值存储滚动进度。`0``1
+
+这些运动值可以直接传递给特定样式。例如，传递`scrollYProgress`给`scaleX`进度条效果很好。
+
+```tsx
+const { scrollYProgress } = useScroll();
+
+return (
+  <motion.div style={{ scaleX: scrollYProgress }} />  
+)
+```
+
+::: tip
+
+由于`scrollY`是`MotionValue`，因此您可以使用一个巧妙的技巧来判断用户的滚动方向何时发生变化：
+
+```tsx
+const { scrollY } = useScroll()
+const [scrollDirection, setScrollDirection] = useState("down")
+
+useMotionValueEvent(scrollY, "change", (current) => {
+  const diff = current - scrollY.getPrevious()
+  setScrollDirection(diff > 0 ? "down" : "up")
+})
+```
+
+:::
+
+
+
+## 过渡
+
+定义在两个值之间进行动画时使用的动画类型。
+
+### [特定于值的转换](https://motion.dev/docs/react-transitions#value-specific-transitions)
+
+当为多个值设置动画时，每个值都可以使用不同的过渡进行动画处理，并`default`处理所有其他值：
+
+```tsx
+// Motion component
+<motion.li
+  animate={{
+    x: 0,
+    opacity: 1,
+    transition: {
+      default: { type: "spring" },
+      opacity: { ease: "linear" }
+    }
+  }}
+/>
+
+// animate() function
+animate("li", { x: 0, opacity: 1 }, {
+  default: { type: "spring" },
+  opacity: { ease: "linear" }
+})
+```
+
+### [过渡设置](https://motion.dev/docs/react-transitions#transition-settings)
+
+#### [`type`](https://motion.dev/docs/react-transitions#type)
+
+**默认值：**动态
+
+`type`决定要使用的动画类型。可以是`"tween"`、`"spring"`或`"inertia"`。
+
+#### [`ease`](https://motion.dev/docs/react-transitions#ease)
+
+与补间动画一起使用的缓动函数。
+
+- 缓动函数名称。
+
+  - `"linear"`
+  - `"easeIn"`，，`"easeOut"``"easeInOut"`
+  - `"circIn"`，，`"circOut"``"circInOut"`
+  - `"backIn"`，，`"backOut"``"backInOut"`
+  - `"anticipate"`
+
+  *我通常使用*`*"easeOut"*`*曲线来过渡进入和退出。开始时的加速会给用户一种响应式的感觉。我使用不超过*`*0.3*`*/*`*0.4*`*秒的持续时间来保持动画的快速性。*
+
+- 四个数字组成的数组，用于定义三次贝塞尔曲线。例如`[.17,.67,.83,.67]`
+- JavaScript[缓动函数](https://motion.dev/docs/easing-functions)，接受并返回一个值- 。`0``1`
+
+### spring
+
+#### [`bounce`](https://motion.dev/docs/react-transitions#bounce)
+
+**默认：** `0.25`
+
+`bounce`确定弹簧动画的“弹性”。
+
+#### [`damping`](https://motion.dev/docs/react-transitions#damping)
+
+**默认：** `10`
+
+反作用力的强度。如果设置为 0，弹簧将无限振荡。
+
+#### [`mass`](https://motion.dev/docs/react-transitions#mass)
+
+**默认：** `1`
+
+运动物体的质量。值越高，运动越迟缓。
+
+#### [`stiffness`](https://motion.dev/docs/react-transitions#stiffness)
+
+**默认：** `1`
+
+弹簧的刚度。值越高，产生的运动越突然。
+
+#### velocity
+
+弹簧的初速度。
+
+
+
+### 编排
+
+#### [`delay`](https://motion.dev/docs/react-transitions#delay)
+
+**默认：**`0`
+
+将动画延迟此持续时间（以秒为单位）。
+
+#### [`repeat`](https://motion.dev/docs/react-transitions#repeat)
+
+**默认：**`0`
+
+重复过渡的次数。设置为`Infinity`可实现永久动画。
+
+```tsx
+<motion.div
+  animate={{ rotate: 180 }}
+  transition={{ repeat: Infinity, duration: 2 }}
+/>
+```
+
+#### [`repeatType`](https://motion.dev/docs/react-transitions#repeattype)
+
+**默认：**`"loop"`
+
+如何重复动画。可以是：
+
+- `loop`：从头开始重复动画。
+- `reverse`：在向前和向后播放之间交替。
+- `mirror`：每次迭代时切换动画原点和目标。
+
+#### [`repeatDelay`](https://motion.dev/docs/react-transitions#repeatdelay)
+
+**默认：**`0`
+
+重复动画时，`repeatDelay`将设置每次重复之间等待的时间长度（以秒为单位）。
+
+#### [`when`](https://motion.dev/docs/react-transitions#when)
+
+**默认：**`false`
+
+通过变体描述动画相对于其子动画的触发时间。
+
+- `"beforeChildren"`：子动画将在父动画完成后播放。
+- `"afterChildren"`：子动画完成后，父动画将会播放。
+
+#### [`delayChildren`](https://motion.dev/docs/react-transitions#delaychildren)
+
+**默认：**`0`
+
+对于变体，`delayChildren`在父级上进行设置将使子级动画延迟此持续时间（以秒为单位）。
+
+```tsx
+const container = {
+  hidden: { opacity: 0 },
+  show: {
+    opacity: 1,
+    transition: {
+      delayChildren: 0.5
+    }
+  }
+}
+
+const item = {
+  hidden: { opacity: 0 },
+  show: { opacity: 1 }
+}
+
+return (
+  <motion.ul
+    variants={container}
+    initial="hidden"
+    animate="show"
+  >
+    <motion.li variants={item} />
+    <motion.li variants={item} />
+  </motion.ul>
+)
+```
+
+使用该功能，我们可以在子级之间错开延迟。`stagger`
+
+```tsx
+const transition = {
+  delayChildren: stagger(0.1)
+}
+```
+
+默认情况下，延迟会从第一个子元素到最后一个子元素交错执行。通过使用`stagger`的`from`选项，我们可以从最后一个子元素、中心或特定索引处交错执行。
+
+```tsx
+const transition = {
+  delayChildren: stagger(0.1, { from: "last" })
+}
+```
 

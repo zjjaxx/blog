@@ -208,6 +208,109 @@ Tailwind 内部严重依赖 CSS 变量，因此如果您可以在项目中使用
 </style>
 ```
 
+### 重置默认样式
+
+[Preflight 建立在modern-normalize](https://github.com/sindresorhus/modern-normalize)之上，是 Tailwind 项目的一组基本样式，旨在消除跨浏览器的不一致性，并使您更容易在设计系统的约束范围内工作。
+
+当您导入`tailwindcss`到项目时，Preflight 会自动注入到`base`图层中：
+
+```css
+@layer theme, base, components, utilities;
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/preflight.css" layer(base);
+/* 引入外部 CSS 文件，并通过 layer()指定其所属层级。 */
+@import "tailwindcss/utilities.css" layer(utilities);
+```
+
+当集成某些第三方库 (`sonner`)时并且用`postcss-preset-env`转换样式时，这可能会导致一些意外结果。
+
+当您遇到此类情况时，您可以通过使用自己的自定义 CSS 覆盖 Preflight 样式来解决它们：
+
+```
+@layer base {
+ [data-sonner-toast][data-styled=true] {
+    padding: 16px;
+    background: var(--normal-bg);
+    border: 1px solid var(--normal-border);
+    color: var(--normal-text);
+    border-radius: var(--border-radius);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, .1);
+    width: var(--width);
+    font-size: 13px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+}
+```
+
+#### [扩展预检功能](https://tailwindcss.com/docs/preflight#extending-preflight)
+
+如果您想在 Preflight 之上添加自己的基本样式，`base`请使用以下命令将它们添加到 CSS 中的 CSS 层`@layer base`：
+
+```css
+@layer base {
+  h1 {
+    font-size: var(--text-2xl);
+  }
+  h2 {
+    font-size: var(--text-xl);
+  }
+  h3 {
+    font-size: var(--text-lg);
+  }
+  a {
+    color: var(--color-blue-600);
+    text-decoration-line: underline;
+  }
+}
+```
+
+#### [禁用预检](https://tailwindcss.com/docs/preflight#disabling-preflight)
+
+如果您想完全禁用 Preflight（可能是因为您将 Tailwind 集成到现有项目中，或者您希望定义自己的基本样式），您可以通过仅导入所需的 Tailwind 部分来实现。
+
+默认情况下，注入的内容如下`@import "tailwindcss";`：
+
+```css
+@layer theme, base, components, utilities;
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/preflight.css" layer(base);
+@import "tailwindcss/utilities.css" layer(utilities);
+```
+
+要禁用 Preflight，只需省略其导入，同时保留其他所有内容：
+
+```scss
+@layer theme, base, components, utilities;
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/preflight.css" layer(base); // [!code --]
+@import "tailwindcss/utilities.css" layer(utilities);
+```
+
+单独导入 Tailwind CSS 文件时，诸如`source()`、、`theme()`和之类的功能`prefix()`应该在各自的导入中进行。
+
+例如，源检测会影响生成的实用程序，因此`source(…)`应将其添加到`utilities.css`导入中：
+
+```scss
+@layer theme, base, components, utilities;
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/utilities.css" layer(utilities);// [!code --]
+@import "tailwindcss/utilities.css" layer(utilities) source("../node_modules/@my-ui-lib");// [!code ++]
+```
+
+最后，使用前缀`prefix(tw)`会影响实用程序和变量，因此它应该在两个导入中进行：
+
+```scss
+@layer theme, base, components, utilities;
+@import "tailwindcss/theme.css" layer(theme);// [!code --]
+@import "tailwindcss/utilities.css" layer(utilities);// [!code --]
+@import "tailwindcss/theme.css" layer(theme) prefix(tw);// [!code ++]
+@import "tailwindcss/utilities.css" layer(utilities) prefix(tw);// [!code ++]
+```
+
+
+
 ### 核心概念
 
 #### 响应式
@@ -552,6 +655,7 @@ Tailwind 还为您的主题变量生成常规 CSS 变量，以便您可以以任
 ```
 
 ::: 
+
 
 ### [屏幕适配](https://github.com/worldzhao/blog/issues/20)
 

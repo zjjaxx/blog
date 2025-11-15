@@ -1181,3 +1181,58 @@ stu2.study('数据科学导论')
 在子类的初始化方法中，我们可以通过`super().__init__()`来调用父类初始化方法，`super`函数是 Python 内置函数中专门为获取当前对象的父类对象而设计的。从上面的代码可以看出，子类除了可以通过继承得到父类提供的属性和方法外，还可以定义自己特有的属性和方法，所以子类比父类拥有的更多的能力。在实际开发中，我们经常会用子类对象去替换掉一个父类对象，这是面向对象编程中一个常见的行为，也叫做“里氏替换原则”（Liskov Substitution Principle）。
 
 子类继承父类的方法后，还可以对方法进行重写（重新实现该方法），不同的子类可以对父类的同一个方法给出不同的实现版本，这样的方法在程序运行时就会表现出多态行为（调用相同的方法，做了不同的事情）。多态是面向对象编程中最精髓的部分
+
+## 对象的序列化和反序列化
+
+### 读写JSON格式的数据
+
+在Python中，如果要将字典处理成JSON格式（以字符串形式存在），可以使用`json`模块的`dumps`函数，代码如下所示。
+
+```python
+import json
+
+my_dict = {
+    'name': '骆昊',
+    'age': 40,
+    'friends': ['王大锤', '白元芳'],
+    'cars': [
+        {'brand': 'BMW', 'max_speed': 240},
+        {'brand': 'Audi', 'max_speed': 280},
+        {'brand': 'Benz', 'max_speed': 280}
+    ]
+}
+print(json.dumps(my_dict))
+
+```
+
+运行上面的代码，输出如下所示，可以注意到中文字符都是用Unicode编码显示的。
+
+```python
+{"name": "\u9a86\u660a", "age": 40, "friends": ["\u738b\u5927\u9524", "\u767d\u5143\u82b3"], "cars": [{"brand": "BMW", "max_speed": 240}, {"brand": "Audi", "max_speed": 280}, {"brand": "Benz", "max_speed": 280}]}
+```
+
+`json`模块有四个比较重要的函数，分别是：
+
+- `dump` - 将Python对象按照JSON格式序列化到文件中
+- `dumps` - 将Python对象处理成JSON格式的字符串
+- `load` - 将文件中的JSON数据反序列化成对象
+- `loads` - 将字符串的内容反序列化成Python对象
+
+### `ujson`
+
+Python标准库中的`json`模块在数据序列化和反序列化时性能并不是非常理想，为了解决这个问题，可以使用三方库`ujson`来替换`json`。
+
+### [`requests`](http://docs.python-requests.org/zh_CN/latest/)
+
+```python
+import requests
+
+resp = requests.get('http://api.tianapi.com/guonei/?key=APIKey&num=10')
+if resp.status_code == 200:
+    data_model = resp.json()
+    for news in data_model['newslist']:
+        print(news['title'])
+        print(news['url'])
+        print('-' * 60)
+```
+

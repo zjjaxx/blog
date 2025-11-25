@@ -208,109 +208,6 @@ Tailwind 内部严重依赖 CSS 变量，因此如果您可以在项目中使用
 </style>
 ```
 
-### 重置默认样式
-
-[Preflight 建立在modern-normalize](https://github.com/sindresorhus/modern-normalize)之上，是 Tailwind 项目的一组基本样式，旨在消除跨浏览器的不一致性，并使您更容易在设计系统的约束范围内工作。
-
-当您导入`tailwindcss`到项目时，Preflight 会自动注入到`base`图层中：
-
-```css
-@layer theme, base, components, utilities;
-@import "tailwindcss/theme.css" layer(theme);
-@import "tailwindcss/preflight.css" layer(base);
-/* 引入外部 CSS 文件，并通过 layer()指定其所属层级。 */
-@import "tailwindcss/utilities.css" layer(utilities);
-```
-
-当集成某些第三方库 (`sonner`)时并且用`postcss-preset-env`转换样式时，这可能会导致一些意外结果。
-
-当您遇到此类情况时，您可以通过使用自己的自定义 CSS 覆盖 Preflight 样式来解决它们：
-
-```
-@layer base {
- [data-sonner-toast][data-styled=true] {
-    padding: 16px;
-    background: var(--normal-bg);
-    border: 1px solid var(--normal-border);
-    color: var(--normal-text);
-    border-radius: var(--border-radius);
-    box-shadow: 0 4px 12px rgba(0, 0, 0, .1);
-    width: var(--width);
-    font-size: 13px;
-    display: flex;
-    align-items: center;
-    gap: 6px;
-  }
-}
-```
-
-#### [扩展预检功能](https://tailwindcss.com/docs/preflight#extending-preflight)
-
-如果您想在 Preflight 之上添加自己的基本样式，`base`请使用以下命令将它们添加到 CSS 中的 CSS 层`@layer base`：
-
-```css
-@layer base {
-  h1 {
-    font-size: var(--text-2xl);
-  }
-  h2 {
-    font-size: var(--text-xl);
-  }
-  h3 {
-    font-size: var(--text-lg);
-  }
-  a {
-    color: var(--color-blue-600);
-    text-decoration-line: underline;
-  }
-}
-```
-
-#### [禁用预检](https://tailwindcss.com/docs/preflight#disabling-preflight)
-
-如果您想完全禁用 Preflight（可能是因为您将 Tailwind 集成到现有项目中，或者您希望定义自己的基本样式），您可以通过仅导入所需的 Tailwind 部分来实现。
-
-默认情况下，注入的内容如下`@import "tailwindcss";`：
-
-```css
-@layer theme, base, components, utilities;
-@import "tailwindcss/theme.css" layer(theme);
-@import "tailwindcss/preflight.css" layer(base);
-@import "tailwindcss/utilities.css" layer(utilities);
-```
-
-要禁用 Preflight，只需省略其导入，同时保留其他所有内容：
-
-```scss
-@layer theme, base, components, utilities;
-@import "tailwindcss/theme.css" layer(theme);
-@import "tailwindcss/preflight.css" layer(base); // [!code --]
-@import "tailwindcss/utilities.css" layer(utilities);
-```
-
-单独导入 Tailwind CSS 文件时，诸如`source()`、、`theme()`和之类的功能`prefix()`应该在各自的导入中进行。
-
-例如，源检测会影响生成的实用程序，因此`source(…)`应将其添加到`utilities.css`导入中：
-
-```scss
-@layer theme, base, components, utilities;
-@import "tailwindcss/theme.css" layer(theme);
-@import "tailwindcss/utilities.css" layer(utilities);// [!code --]
-@import "tailwindcss/utilities.css" layer(utilities) source("../node_modules/@my-ui-lib");// [!code ++]
-```
-
-最后，使用前缀`prefix(tw)`会影响实用程序和变量，因此它应该在两个导入中进行：
-
-```scss
-@layer theme, base, components, utilities;
-@import "tailwindcss/theme.css" layer(theme);// [!code --]
-@import "tailwindcss/utilities.css" layer(utilities);// [!code --]
-@import "tailwindcss/theme.css" layer(theme) prefix(tw);// [!code ++]
-@import "tailwindcss/utilities.css" layer(utilities) prefix(tw);// [!code ++]
-```
-
-
-
 ### 核心概念
 
 #### 响应式
@@ -433,6 +330,147 @@ Tailwind`max-*`为每个断点生成相应的变体，因此开箱即用，有�
 #### [悬停和焦点状态的样式](https://tailwindcss.com/docs/styling-with-utility-classes#styling-hover-and-focus-states)
 
 要在悬停或聚焦等状态下设置元素的样式，请在任何实用程序前加上您想要定位的状态，例如`hover:bg-sky-700`：
+
+#### 特殊选择器
+
+##### :has()
+
+使用此`has-*`变体可以根据其子元素的状态或内容来设置元素的样式：
+
+```html
+<label
+  class="has-checked:bg-indigo-50 has-checked:text-indigo-900 has-checked:ring-indigo-200 dark:has-checked:bg-indigo-950 dark:has-checked:text-indigo-200 dark:has-checked:ring-indigo-900 ..."
+>
+  <svg fill="currentColor">
+    <!-- ... -->
+  </svg>
+  Google Pay
+  <input type="radio" class="checked:border-indigo-500 ..." />
+</label>
+
+```
+
+你可以使用`has-*`伪类（例如 `@ `has-[:focus]`ElementById`）来根据子元素的状态设置元素的样式。你也可以使用元素选择器（例如 `@ElementById``has-[img]`或 `@ `has-[a]`ElementById`）来根据子元素的内容设置元素的样式。
+
+##### group
+
+如果需要根据父元素的子元素来设置目标元素的样式，可以使用类名标记父元素`group`，然后使用`group-has-*`变体来设置目标元素的样式：
+
+```html
+<div class="group ...">
+  <img src="..." />
+  <h4>Spencer Sharp</h4>
+  <svg class="hidden group-has-[a]:block ..."><!-- ... --></svg>
+  <p>Product Designer at <a href="...">planeteria.tech</a></p>
+</div>
+```
+
+这种模式适用于每个伪类变体，例如`group-focus`，，`group-active`甚至`group-odd`。
+
+```html
+<a href="#" class="group ...">
+  <div>
+    <svg class="stroke-sky-500 group-hover:stroke-white ..." fill="none" viewBox="0 0 24 24">
+      <!-- ... -->
+    </svg>
+    <h3 class="text-gray-900 group-hover:text-white ...">New project</h3>
+  </div>
+  <p class="text-gray-500 group-hover:text-white ...">Create a new project from a variety of starting templates.</p>
+</a>
+```
+
+###### [区分嵌套组](https://tailwindcss.com/docs/hover-focus-and-other-states#differentiating-nested-groups)
+
+*在嵌套分组时，您可以根据特定*父分组的状态来设置某些元素的样式，方法是使用类为父分组指定一个唯一的分组名称`group/{name}`，并在变体中使用类似这样的类来包含该名称`group-hover/{name}`：
+
+```html
+<ul role="list">
+  {#each people as person}
+    <li class="group/item ...">
+      <!-- ... -->
+      <a class="group/edit invisible group-hover/item:visible ..." href="tel:{person.phone}">
+        <span class="group-hover/edit:text-gray-700 ...">Call</span>
+        <svg class="group-hover/edit:translate-x-0.5 group-hover/edit:text-gray-500 ..."><!-- ... --></svg>
+      </a>
+    </li>
+  {/each}
+</ul>
+```
+
+
+
+##### peer
+
+当您需要根据*同级*元素的状态来设置某个元素的样式时，请使用类名标记同级元素`peer`，并使用`peer-*`类似以下的变体`peer-invalid`来设置目标元素的样式：
+
+```html
+<form>
+  <label class="block">
+    <span class="...">Email</span>
+    <input type="email" class="peer ..." />
+    <p class="invisible peer-invalid:visible ...">Please provide a valid email address.</p>
+  </label>
+</form>
+```
+
+::: tip
+
+需要注意的是，由于CSS 中[后续兄弟元素组合器的](https://developer.mozilla.org/en-US/docs/Web/CSS/Subsequent-sibling_combinator)`peer`工作方式，该标记只能用于*之前的兄弟元素：*
+
+```html
+<label>
+  <span class="peer-invalid:text-red-500 ...">Email</span>
+  <input type="email" class="peer ..." />
+</label>
+```
+
+不行，只有之前的兄弟姐妹才能被标记为同级。
+
+:::
+
+如果需要根据兄弟元素的后代元素来设置目标元素的样式，可以使用类名标记兄弟元素`peer`，然后使用`peer-has-*`变体来设置目标元素的样式：
+
+```html
+<div>
+  <label class="peer ...">
+    <input type="checkbox" name="todo[1]" checked />
+    Create a to do list
+  </label>
+  <svg class="peer-has-checked:hidden ..."><!-- ... --></svg>
+</div>
+```
+
+当使用多个对等节点时，您可以通过为*特定*对等节点指定一个唯一的类名`peer/{name}`，并使用该类在变体中包含该名称，从而根据特定对等节点的状态设置样式，例如`peer-checked/{name}`：
+
+##### [数据属性](https://tailwindcss.com/docs/hover-focus-and-other-states#data-attributes)
+
+使用该`data-*`变体可以根据[数据属性](https://developer.mozilla.org/en-US/docs/Learn/HTML/Howto/Use_data_attributes)有条件地应用样式。
+
+```html
+<!-- Will apply -->
+<div data-active class="border border-gray-300 data-active:border-purple-500">
+  <!-- ... -->
+</div>
+<!-- Will not apply -->
+<div class="border border-gray-300 data-active:border-purple-500">
+  <!-- ... -->
+</div>
+```
+
+如果需要检查特定值，可以使用任意值：
+
+```html
+<!-- Will apply -->
+<div data-size="large" class="data-[size=large]:p-8">
+  <!-- ... -->
+</div>
+<!-- Will not apply -->
+<div data-size="medium" class="data-[size=large]:p-8">
+  <!-- ... -->
+</div>
+```
+
+
 
 #### [媒体查询和断点](https://tailwindcss.com/docs/styling-with-utility-classes#media-queries-and-breakpoints)
 
@@ -655,7 +693,6 @@ Tailwind 还为您的主题变量生成常规 CSS 变量，以便您可以以任
 ```
 
 ::: 
-
 
 ### [屏幕适配](https://github.com/worldzhao/blog/issues/20)
 

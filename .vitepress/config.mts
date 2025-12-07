@@ -33,8 +33,12 @@ export default defineConfig({
           { text: "vue3源码熟读", link: "/vue3源码熟读" },
           { text: "rollup源码解析", link: "/rollup源码解析" },
           { text: "element-plus源码解析", link: "/element-plus源码解析" },
-          { text: "vue-router源码解析", link: "/vue-router源码解析" },  
+          { text: "vue-router源码解析", link: "/vue-router源码解析" },
           { text: "微前端", link: "/微前端" },
+          {
+            text: "react原理",
+            link: "/react原理",
+          },
         ],
       },
       {
@@ -43,15 +47,15 @@ export default defineConfig({
           { text: "模块系统", link: "/模块系统" },
           { text: "vue3项目实践", link: "/vue3项目实践" },
           { text: "tsdown", link: "/tsdown" },
-          { text: "react", link: "/react" },  
+          { text: "react", link: "/react" },
           { text: "typescript", link: "/typescript" },
           { text: "ast", link: "/ast" },
           { text: "magic-string", link: "/magic-string" },
           { text: "原子化CSS", link: "/原子化CSS" },
-          {text:"shadcn组件库",link:"/shadcn组件库"},
-          {text:"tanstack-query",link:"/tanstack-query"},
-          {text:"tanstack-router",link:"/tanstack-router"},
-          {text:"tanstack-table",link:"/tanstack-table"},
+          { text: "shadcn组件库", link: "/shadcn组件库" },
+          { text: "tanstack-query", link: "/tanstack-query" },
+          { text: "tanstack-router", link: "/tanstack-router" },
+          { text: "tanstack-table", link: "/tanstack-table" },
           { text: "算法", link: "/算法" },
           { text: "gsap", link: "/gsap" },
           { text: "JSONSchema", link: "/JSON-schema" },
@@ -65,6 +69,34 @@ export default defineConfig({
           { text: "vite模块联邦", link: "/vite模块联邦" },
           { text: "python", link: "/python" },
           { text: "motion", link: "/motion" },
+          {
+            text: "正则表达式",
+            link: "/正则表达式",
+          },
+          {
+            text: "django",
+            link: "/django",
+          },
+          {
+            text: "immer",
+            link: "/immer",
+          },
+          {
+            text: "numpy",
+            link: "/numpy",
+          },
+          {
+            text:"zustand",
+            link:"/zustand",
+          },
+            {
+            text: "rspack",
+            link: "/rspack",
+          },
+          {
+            text: "spider",
+            link: "/spider",
+          },
         ],
       },
       {
@@ -74,16 +106,21 @@ export default defineConfig({
           { text: "性能指标可视化插件", link: "/性能指标可视化插件" },
           { text: "组件库", link: "/组件库" },
           { text: "nest脚手架", link: "/nest脚手架" },
+          {
+            text:"z_bot",
+            link:"/z_bot",
+          }
         ],
       },
       {
         text: "生活知识",
-        items: [{ text: "租房", link: "/租房" },{ text: "菜谱", link: "/菜谱" }],
+        items: [
+          { text: "租房", link: "/租房" },
+          { text: "菜谱", link: "/菜谱" },
+        ],
       },
     ],
 
-    socialLinks: [
-      { icon: "github", link: "https://github.com/zjjaxx/blog" },
-    ],
+    socialLinks: [{ icon: "github", link: "https://github.com/zjjaxx/blog" }],
   },
 });

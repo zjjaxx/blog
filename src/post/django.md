@@ -1,92 +1,167 @@
 ## Django
 
-### 项目文件说明
+## 配置PyCharm
 
-- `项目名/__init__.py`：空文件，告诉Python解释器这个目录应该被视为一个Python的包。
-- `项目名/settings.py`：Django项目的配置文件。
-- `项目名/urls.py`：Django项目的URL映射声明，就像是网站的“目录”。
-- `项目名/wsgi.py`：项目运行在WSGI兼容Web服务器上的入口文件。
-- `manage.py`： 管理Django项目的脚本程序。
+- 配置PyCharm的Python环境为anaconda
+- 设置字体大小
 
-### 修改项目的配置文件`settings.py`。
+## 新建项目
 
-Django是一个支持国际化和本地化的框架，因此刚才我们看到的Django项目的默认首页也是支持国际化的，我们可以通过修改配置文件将默认语言修改为中文，时区设置为东八区。
+- 在anaconda环境中安装Django
+
+- 初始化项目
+
+  ```bash
+  django-admin startproject mysite djangotutorial
+  ```
+
+- 新建应用模块
+
+  ::: tip
+
+  Python项目里可以有多个应用模块管理不同功能
+
+  :::
+
+  ```bash
+  python manage.py startapp polls
+  ```
+
+- 配置应用URL和编写view视图
+
+  ::: tip
+
+  每个应用模块管理自己的URL
+
+  :::
+
+  ```python
+  # polls/urls.py
+  from django.urls import path
+  
+  from . import views
+  
+  urlpatterns = [
+      path("", views.index, name="index"),
+  ]
+  ```
+
+- 在根项目的URL中配置应用的URL
+
+  ::: tip
+
+  每个应用有自己不同的URL，根应用URL管理全部应用的URL
+
+  :::
+
+  ```python
+  from django.contrib import admin
+  from django.urls import include, path
+  
+  urlpatterns = [
+      path("polls/", include("polls.urls")),
+      path("admin/", admin.site.urls),
+  ]
+  ```
+
+  [`path()`](https://docs.djangoproject.com/zh-hans/6.0/ref/urls/#django.urls.path) 函数至少需要两个参数：`route` 和 `view`。[`include()`](https://docs.djangoproject.com/zh-hans/6.0/ref/urls/#django.urls.include) 函数允许引用其他 URLconfs。每当 Django 遇到 [`include()`](https://docs.djangoproject.com/zh-hans/6.0/ref/urls/#django.urls.include) 时，它会截断 URL 中匹配到该点的部分，并将剩余的字符串发送到包含的 URLconf 以进行进一步处理
+
+## 数据库配置
+
+在根项目的setting文件中配置数据库，默认情况下，[`DATABASES`](https://docs.djangoproject.com/zh-hans/6.0/ref/settings/#std-setting-DATABASES) 配置使用 SQLite。
+
+### 设置时区
 
 ```python
-LANGUAGE_CODE = 'en-us'
-TIME_ZONE = 'UTC'
-```
-
-修改为以下内容。
-
-```python
-LANGUAGE_CODE = "zh-hans"
 TIME_ZONE = "Asia/Shanghai"
 ```
 
-### 创建自己的应用
+## 应用管理
 
-如果要开发自己的Web应用，需要先在Django项目中创建“应用”，一个Django项目可以包含一个或多个应用。
+[`INSTALLED_APPS`](https://docs.djangoproject.com/zh-hans/6.0/ref/settings/#std-setting-INSTALLED_APPS) 设置项。这里包括了会在你项目中启用的所有 Django 应用。应用能在多个项目中使用，你也可以打包并且发布应用，让别人使用它们。
 
-1. 在PyCharm的终端中执行下面的命令，创建名为`first`的应用。
+通常， [`INSTALLED_APPS`](https://docs.djangoproject.com/zh-hans/6.0/ref/settings/#std-setting-INSTALLED_APPS) 默认包括了以下 Django 的自带应用：
 
-```bash
-python manage.py startapp first
-```
+- [`django.contrib.admin`](https://docs.djangoproject.com/zh-hans/6.0/ref/contrib/admin/#module-django.contrib.admin) -- 管理员站点， 你很快就会使用它。
+- [`django.contrib.auth`](https://docs.djangoproject.com/zh-hans/6.0/topics/auth/#module-django.contrib.auth) -- 认证授权系统。
+- [`django.contrib.contenttypes`](https://docs.djangoproject.com/zh-hans/6.0/ref/contrib/contenttypes/#module-django.contrib.contenttypes) -- 内容类型框架。
+- [`django.contrib.sessions`](https://docs.djangoproject.com/zh-hans/6.0/topics/http/sessions/#module-django.contrib.sessions) -- 会话框架。
+- [`django.contrib.messages`](https://docs.djangoproject.com/zh-hans/6.0/ref/contrib/messages/#module-django.contrib.messages) -- 消息框架。
+- [`django.contrib.staticfiles`](https://docs.djangoproject.com/zh-hans/6.0/ref/contrib/staticfiles/#module-django.contrib.staticfiles) -- 管理静态文件的框架。
 
-执行上面的命令会在当前路径下创建`first`目录，其目录结构如下所示：
+## 创建模型
 
-- `__init__.py`：一个空文件，告诉Python解释器这个目录应该被视为一个Python的包。
-- `admin.py`：可以用来注册模型，用于在Django框架自带的管理后台中管理模型。
-- `apps.py`：当前应用的配置文件。
-- migrations：存放与模型有关的数据库迁移信息。
-  - `__init__.py`：一个空文件，告诉Python解释器这个目录应该被视为一个Python的包。
+在这个投票应用中，需要创建两个模型：问题 `Question` 和选项 `Choice`。`Question` 模型包括问题描述和发布时间。`Choice` 模型有两个字段，选项描述和当前得票数。每个选项属于一个问题。
 
-- `models.py`：存放应用的数据模型（MTV中的M）。
-- `tests.py`：包含测试应用各项功能的测试类和测试函数。
-- `views.py`：处理用户HTTP请求并返回HTTP响应的函数或类（MTV中的V）。
-
-### 模型
+这些概念可以通过一个 Python 类来描述。按照下面的例子来编辑 `polls/models.py` 文件：
 
 模型准确且唯一的描述了数据。它包含您储存的数据的重要字段和行为。一般来说，每一个模型都映射一张数据库表。
 
 ```python
+# polls/models.py
 from django.db import models
 
 
-class Person(models.Model):
-    first_name = models.CharField(max_length=30)
-    last_name = models.CharField(max_length=30)
+class Question(models.Model):
+    question_text = models.CharField(max_length=200)
+    pub_date = models.DateTimeField("date published")
+
+
+class Choice(models.Model):
+    question = models.ForeignKey(Question, on_delete=models.CASCADE)
+    choice_text = models.CharField(max_length=200)
+    votes = models.IntegerField(default=0)
 ```
 
-上面的 `Person` 模型会创建一个如下的数据库表：
+注意在最后，我们使用 [`ForeignKey`](https://docs.djangoproject.com/zh-hans/6.0/ref/models/fields/#django.db.models.ForeignKey) 定义了一个关系。这将告诉 Django，每个 `Choice` 对象都关联到一个 `Question` 对象。Django 支持所有常用的数据库关系：多对一、多对多和一对一。
+
+## 激活模型
+
+上面的一小段用于创建模型的代码给了 Django 很多信息，通过这些信息，Django 可以：
+
+- 为这个应用创建数据库 schema（生成 `CREATE TABLE` 语句）。
+- 创建可以与 `Question` 和 `Choice` 对象进行交互的 Python 数据库 API。
+
+但是首先得把 `polls` 应用安装到我们的项目里。一旦你定义了你的模型，你需要告诉 Django 你准备 *使用* 这些模型。这是为了能够做数据库生成和迁移
+
+::: tip
+
+Django 应用是“可插拔”的。你可以在多个项目中使用同一个应用。除此之外，你还可以发布自己的应用，因为它们并不会被绑定到当前安装的 Django 上。
+
+:::
+
+为了在我们的工程中包含这个应用，我们需要在配置类 [`INSTALLED_APPS`](https://docs.djangoproject.com/zh-hans/6.0/ref/settings/#std-setting-INSTALLED_APPS) 中添加设置。因为 `PollsConfig` 类写在文件 `polls/apps.py` 中，所以它的点式路径是 `'polls.apps.PollsConfig'`。在文件 `mysite/settings.py` 中 [`INSTALLED_APPS`](https://docs.djangoproject.com/zh-hans/6.0/ref/settings/#std-setting-INSTALLED_APPS) 子项添加点式路径后，它看起来像这样：
 
 ```python
-CREATE TABLE myapp_person (
-    "id" bigint NOT NULL PRIMARY KEY GENERATED BY DEFAULT AS IDENTITY,
-    "first_name" varchar(30) NOT NULL,
-    "last_name" varchar(30) NOT NULL
-);
-```
-
-一些技术上的说明：
-
-- 该表的名称 `myapp_person` 是自动从某些模型元数据中派生出来，但可以被改写。参阅 [表名称](https://docs.djangoproject.com/zh-hans/5.2/ref/models/options/#table-names) 获取更多信息。
-- 一个 `id` 字段会被自动添加，但是这种行为可以被改写。请参阅 [自动设置主键](https://docs.djangoproject.com/zh-hans/5.2/topics/db/models/#automatic-primary-key-fields)。
-
-#### 使用模型
-
-一旦你定义了你的模型，你需要告诉 Django 你准备 *使用* 这些模型。你需要修改设置文件中的 [`INSTALLED_APPS`](https://docs.djangoproject.com/zh-hans/5.2/ref/settings/#std-setting-INSTALLED_APPS) ，在这个设置中添加包含 `models.py` 文件的模块名称。
-
-例如，若模型位于项目中的 `myapp.models` 模块（ 此包结构由 [`manage.py startapp`](https://docs.djangoproject.com/zh-hans/5.2/ref/django-admin/#django-admin-startapp) 命令创建）， [`INSTALLED_APPS`](https://docs.djangoproject.com/zh-hans/5.2/ref/settings/#std-setting-INSTALLED_APPS) 应设置如下：
-
-```python
+# mysite/settings.py¶
 INSTALLED_APPS = [
-    # ...
-    "myapp",
-    # ...
+    "polls.apps.PollsConfig",
+    "django.contrib.admin",
+    "django.contrib.auth",
+    "django.contrib.contenttypes",
+    "django.contrib.sessions",
+    "django.contrib.messages",
+    "django.contrib.staticfiles",
 ]
 ```
+
+现在你的 Django 项目会包含 `polls` 应用。接着运行下面的命令：
+
+```bash
+python manage.py makemigrations polls
+```
+
+通过运行 `makemigrations` 命令，Django 会检测你对模型文件的修改（在这种情况下，你已经取得了新的），并且把修改的部分储存为一次 *迁移*。
+
+现在，再次运行 [`migrate`](https://docs.djangoproject.com/zh-hans/6.0/ref/django-admin/#django-admin-migrate) 命令，在数据库里创建新定义的模型的数据表：
+
+```python
+python manage.py migrate
+```
+
+这个 [`migrate`](https://docs.djangoproject.com/zh-hans/6.0/ref/django-admin/#django-admin-migrate) 命令选中所有还没有执行过的迁移（Django 通过在数据库中创建一个特殊的表 `django_migrations` 来跟踪执行过哪些迁移）并应用在数据库上 - 也就是将你对模型的更改同步到数据库结构上。
+
+## 模型字段
 
 #### 字段类型
 
@@ -272,1208 +347,6 @@ class Person(models.Model):
 ```python
 first_name = models.CharField("person's first name", max_length=30)
 ```
-
-#### 关联关系
-
-## Django
-
-### 项目文件说明
-
-- `项目名/__init__.py`：空文件，告诉Python解释器这个目录应该被视为一个Python的包。
-- `项目名/settings.py`：Django项目的配置文件。
-- `项目名/urls.py`：Django项目的URL映射声明，就像是网站的“目录”。
-- `项目名/wsgi.py`：项目运行在WSGI兼容Web服务器上的入口文件。
-- `manage.py`： 管理Django项目的脚本程序。
-
-### 修改项目的配置文件`settings.py`。
-
-Django是一个支持国际化和本地化的框架，因此刚才我们看到的Django项目的默认首页也是支持国际化的，我们可以通过修改配置文件将默认语言修改为中文，时区设置为东八区。
-
-```python
-LANGUAGE_CODE = 'en-us'
-TIME_ZONE = 'UTC'
-```
-
-修改为以下内容。
-
-```python
-LANGUAGE_CODE = "zh-hans"
-TIME_ZONE = "Asia/Shanghai"
-```
-
-### 创建自己的应用
-
-如果要开发自己的Web应用，需要先在Django项目中创建“应用”，一个Django项目可以包含一个或多个应用。
-
-1. 在PyCharm的终端中执行下面的命令，创建名为`first`的应用。
-
-```bash
-python manage.py startapp first
-```
-
-执行上面的命令会在当前路径下创建`first`目录，其目录结构如下所示：
-
-- `__init__.py`：一个空文件，告诉Python解释器这个目录应该被视为一个Python的包。
-- `admin.py`：可以用来注册模型，用于在Django框架自带的管理后台中管理模型。
-- `apps.py`：当前应用的配置文件。
-- migrations：存放与模型有关的数据库迁移信息。
-  - `__init__.py`：一个空文件，告诉Python解释器这个目录应该被视为一个Python的包。
-
-- `models.py`：存放应用的数据模型（MTV中的M）。
-- `tests.py`：包含测试应用各项功能的测试类和测试函数。
-- `views.py`：处理用户HTTP请求并返回HTTP响应的函数或类（MTV中的V）。
-
-### 模型
-
-模型准确且唯一的描述了数据。它包含您储存的数据的重要字段和行为。一般来说，每一个模型都映射一张数据库表。
-
-```python
-from django.db import models
-
-
-class Person(models.Model):
-    first_name = models.CharField(max_length=30)
-    last_name = models.CharField(max_length=30)
-```
-
-上面的 `Person` 模型会创建一个如下的数据库表：
-
-```python
-CREATE TABLE myapp_person (
-    "id" bigint NOT NULL PRIMARY KEY GENERATED BY DEFAULT AS IDENTITY,
-    "first_name" varchar(30) NOT NULL,
-    "last_name" varchar(30) NOT NULL
-);
-```
-
-一些技术上的说明：
-
-- 该表的名称 `myapp_person` 是自动从某些模型元数据中派生出来，但可以被改写。参阅 [表名称](https://docs.djangoproject.com/zh-hans/5.2/ref/models/options/#table-names) 获取更多信息。
-- 一个 `id` 字段会被自动添加，但是这种行为可以被改写。请参阅 [自动设置主键](https://docs.djangoproject.com/zh-hans/5.2/topics/db/models/#automatic-primary-key-fields)。
-
-#### 使用模型
-
-一旦你定义了你的模型，你需要告诉 Django 你准备 *使用* 这些模型。你需要修改设置文件中的 [`INSTALLED_APPS`](https://docs.djangoproject.com/zh-hans/5.2/ref/settings/#std-setting-INSTALLED_APPS) ，在这个设置中添加包含 `models.py` 文件的模块名称。
-
-例如，若模型位于项目中的 `myapp.models` 模块（ 此包结构由 [`manage.py startapp`](https://docs.djangoproject.com/zh-hans/5.2/ref/django-admin/#django-admin-startapp) 命令创建）， [`INSTALLED_APPS`](https://docs.djangoproject.com/zh-hans/5.2/ref/settings/#std-setting-INSTALLED_APPS) 应设置如下：
-
-```python
-INSTALLED_APPS = [
-    # ...
-    "myapp",
-    # ...
-]
-```
-
-#### 字段类型
-
-模型中每一个字段都应该是某个 [`Field`](https://docs.djangoproject.com/zh-hans/5.2/ref/models/fields/#django.db.models.Field) 类的实例， Django 利用这些字段类来实现以下功能：
-
-你可以在 [模型字段参考](https://docs.djangoproject.com/zh-hans/5.2/ref/models/fields/#model-field-types) 中看到完整列表
-
-##### 常用的字段列表
-
-######  `AutoField`
-
-一个 [`IntegerField`](https://docs.djangoproject.com/zh-hans/5.2/ref/models/fields/#django.db.models.IntegerField)，根据可用的 ID 自动递增。你通常不需要直接使用它；如果你没有指定，主键字段会自动添加到你的模型中。
-
-###### `BooleanField`
-
-一个 true／false 字段。
-
-###### `CharField`
-
-一个字符串字段，适用于小到大的字符串。
-
-对于大量的文本，使用 [`TextField`](https://docs.djangoproject.com/zh-hans/5.2/ref/models/fields/#django.db.models.TextField)。
-
-[`CharField`](https://docs.djangoproject.com/zh-hans/5.2/ref/models/fields/#django.db.models.CharField) 具有以下额外参数：CharField.max_length
-
-###### `DateField`
-
-- DateField.auto_now
-
-  每次保存对象时，自动将该字段设置为现在。对于“最后修改”的时间戳很有用。请注意，当前日期 *总是* 被使用，而不仅仅是一个你可以覆盖的默认值。只有在调用 [`Model.save()`](https://docs.djangoproject.com/zh-hans/5.2/ref/models/instances/#django.db.models.Model.save) 时，该字段才会自动更新。当以其他方式对其他字段进行更新时，如 [`QuerySet.update()`](https://docs.djangoproject.com/zh-hans/5.2/ref/models/querysets/#django.db.models.query.QuerySet.update)，该字段不会被更新，尽管你可以在这样的更新中为该字段指定一个自定义值。
-
-- DateField.auto_now_add
-
-  当第一次创建对象时，自动将该字段设置为现在。对创建时间戳很有用。请注意，当前日期是 *始终* 使用的；它不是一个你可以覆盖的默认值。因此，即使你在创建对象时为该字段设置了一个值，它也会被忽略。
-
-###### `DateTimeField`
-
-一个日期和时间，在 Python 中用一个 `datetime.datetime` 实例表示。与 [`DateField`](https://docs.djangoproject.com/zh-hans/5.2/ref/models/fields/#django.db.models.DateField) 一样，使用相同的额外参数。
-
-###### `EmailField`
-
-一个 [`CharField`](https://docs.djangoproject.com/zh-hans/5.2/ref/models/fields/#django.db.models.CharField)，使用 [`EmailValidator`](https://docs.djangoproject.com/zh-hans/5.2/ref/validators/#django.core.validators.EmailValidator) 来检查该值是否为有效的电子邮件地址。
-
-###### `FloatField`
-
-在 Python 中用一个 `float` 实例表示的浮点数。
-
-###### `IntegerField`
-
-一个整数。其值仅允许在特定范围内（取决于数据库）。在Django支持的所有数据库中，-2147483648到2147483647之间的值都是兼容的
-
-###### `JSONField`
-
-一个用于存储 JSON 编码数据的字段。
-
-###### `TextField`
-
-一个大的文本字段。
-
-###### `TimeField`
-
-一个时间，
-
-###### `URLField`
-
-该字段的默认表单部件是一个 [`URLInput`](https://docs.djangoproject.com/zh-hans/5.2/ref/forms/widgets/#django.forms.URLInput)。
-
-###### `UUIDField`
-
-通用唯一标识符是 [`primary_key`](https://docs.djangoproject.com/zh-hans/5.2/ref/models/fields/#django.db.models.Field.primary_key) 的 [`AutoField`](https://docs.djangoproject.com/zh-hans/5.2/ref/models/fields/#django.db.models.AutoField) 的一个很好的替代方案。数据库不会为你生成 UUID，所以建议使用 [`default`](https://docs.djangoproject.com/zh-hans/5.2/ref/models/fields/#django.db.models.Field.default) ：
-
-```python
-import uuid
-from django.db import models
-
-
-class MyUUIDModel(models.Model):
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    # other fields
-```
-
-##### 关系字段
-
-###### ForeignKey
-
-多对一关系。需要两个位置参数：模型关联的类和 [`on_delete`](https://docs.djangoproject.com/zh-hans/5.2/ref/models/fields/#django.db.models.ForeignKey.on_delete) 选项：
-
-```python
-from django.db import models
-
-
-class Manufacturer(models.Model):
-    name = models.TextField()
-
-
-class Car(models.Model):
-    manufacturer = models.ForeignKey(Manufacturer, on_delete=models.CASCADE)
-```
-
-第一个位置参数可以是具体模型类或对模型类的 [延迟引用](https://docs.djangoproject.com/zh-hans/5.2/ref/models/fields/#lazy-relationships)。还支持 [递归关系](https://docs.djangoproject.com/zh-hans/5.2/ref/models/fields/#recursive-relationships)，即模型与自身的关系。
-
-第二个位置参数级联删除。Django模拟了SQL约束ON DELETE CASCADE的行为，并且还会删除包含ForeignKey的对象。
-
-###### `ManyToManyField`
-
-一个多对多的关系。需要一个位置参数：模型相关的类，它的工作原理与 [`ForeignKey`](https://docs.djangoproject.com/zh-hans/5.2/ref/models/fields/#django.db.models.ForeignKey) 完全相同，包括 [递归](https://docs.djangoproject.com/zh-hans/5.2/ref/models/fields/#recursive-relationships) 和 [惰性](https://docs.djangoproject.com/zh-hans/5.2/ref/models/fields/#lazy-relationships) 关系。
-
-###### `OneToOneField`
-
-一对一的关系。
-
-#### 字段选项
-
-下面介绍一部分经常用到的通用参数：
-
-##### [`null`](https://docs.djangoproject.com/zh-hans/5.2/ref/models/fields/#django.db.models.Field.null)
-
-如果设置为 `True`，当该字段为空时，Django 会将数据库中该字段设置为 `NULL`。默认为 `False` 。
-
-##### [`blank`](https://docs.djangoproject.com/zh-hans/5.2/ref/models/fields/#django.db.models.Field.blank)
-
-如果设置为 `True`，该字段允许为空。默认为 `False`。
-
-请注意，这与 [`null`](https://docs.djangoproject.com/zh-hans/5.2/ref/models/fields/#django.db.models.Field.null) 不同。[`null`](https://docs.djangoproject.com/zh-hans/5.2/ref/models/fields/#django.db.models.Field.null) 完全与数据库相关联，而 [`blank`](https://docs.djangoproject.com/zh-hans/5.2/ref/models/fields/#django.db.models.Field.blank) 与验证有关。如果字段具有 [`blank=True`](https://docs.djangoproject.com/zh-hans/5.2/ref/models/fields/#django.db.models.Field.blank)，表单验证将允许输入空值。如果字段具有 [`blank=False`](https://docs.djangoproject.com/zh-hans/5.2/ref/models/fields/#django.db.models.Field.blank)，则字段为必填项。
-
-##### [`choices`](https://docs.djangoproject.com/zh-hans/5.2/ref/models/fields/#django.db.models.Field.choices)
-
-一个由二元组组成的序列、映射、枚举类型或可调用对象（无需参数并返回上述任意格式），用作该字段的选项。如果提供了此参数，默认的表单控件将变为选择框而非标准文本框，并将选项限制为给定的选项
-
-```python
-YEAR_IN_SCHOOL_CHOICES = [
-    ("FR", "Freshman"),
-    ("SO", "Sophomore"),
-    ("JR", "Junior"),
-    ("SR", "Senior"),
-    ("GR", "Graduate"),
-]
-```
-
-每个二元组的第一个值会储存在数据库中，而第二个值将只会用于在表单中显示。
-
-对于一个模型实例，要获取该字段二元组中相对应的第二个值，使用 [`get_FOO_display()`](https://docs.djangoproject.com/zh-hans/5.2/ref/models/instances/#django.db.models.Model.get_FOO_display) 方法。例如：
-
-```python
-from django.db import models
-
-
-class Person(models.Model):
-    SHIRT_SIZES = {
-        "S": "Small",
-        "M": "Medium",
-        "L": "Large",
-    }
-    name = models.CharField(max_length=60)
-    shirt_size = models.CharField(max_length=1, choices=SHIRT_SIZES)
-```
-
-```python
->>> p = Person(name="Fred Flintstone", shirt_size="L")
->>> p.save()
->>> p.shirt_size
-'L'
->>> p.get_shirt_size_display()
-'Large'
-```
-
-##### [`default`](https://docs.djangoproject.com/zh-hans/5.2/ref/models/fields/#django.db.models.Field.default)
-
-该字段的默认值。可以是一个值或者是个可调用的对象，如果是个可调用对象，每次实例化模型时都会调用该对象。
-
-##### [`primary_key`](https://docs.djangoproject.com/zh-hans/5.2/ref/models/fields/#django.db.models.Field.primary_key)
-
-如果设置为 `True` ，将该字段设置为该模型的主键
-
-##### [`unique`](https://docs.djangoproject.com/zh-hans/5.2/ref/models/fields/#django.db.models.Field.unique)
-
-如果设置为 `True`，这个字段的值必须在整个表中保持唯一。
-
-#### 字段备注名
-
-除了 [`ForeignKey`](https://docs.djangoproject.com/zh-hans/5.2/ref/models/fields/#django.db.models.ForeignKey)， [`ManyToManyField`](https://docs.djangoproject.com/zh-hans/5.2/ref/models/fields/#django.db.models.ManyToManyField) 和 [`OneToOneField`](https://docs.djangoproject.com/zh-hans/5.2/ref/models/fields/#django.db.models.OneToOneField)，任何字段类型都接收一个可选的位置参数 [`verbose_name`](https://docs.djangoproject.com/zh-hans/5.2/ref/models/fields/#django.db.models.Field.verbose_name)，如果未指定该参数值， Django 会自动使用字段的属性名作为该参数值，并且把下划线转换为空格。
-
-```python
-first_name = models.CharField("person's first name", max_length=30)
-```
-
-#### 关联关系
-
-## Django
-
-### 项目文件说明
-
-- `项目名/__init__.py`：空文件，告诉Python解释器这个目录应该被视为一个Python的包。
-- `项目名/settings.py`：Django项目的配置文件。
-- `项目名/urls.py`：Django项目的URL映射声明，就像是网站的“目录”。
-- `项目名/wsgi.py`：项目运行在WSGI兼容Web服务器上的入口文件。
-- `manage.py`： 管理Django项目的脚本程序。
-
-### 修改项目的配置文件`settings.py`。
-
-Django是一个支持国际化和本地化的框架，因此刚才我们看到的Django项目的默认首页也是支持国际化的，我们可以通过修改配置文件将默认语言修改为中文，时区设置为东八区。
-
-```python
-LANGUAGE_CODE = 'en-us'
-TIME_ZONE = 'UTC'
-```
-
-修改为以下内容。
-
-```python
-LANGUAGE_CODE = "zh-hans"
-TIME_ZONE = "Asia/Shanghai"
-```
-
-### 创建自己的应用
-
-如果要开发自己的Web应用，需要先在Django项目中创建“应用”，一个Django项目可以包含一个或多个应用。
-
-1. 在PyCharm的终端中执行下面的命令，创建名为`first`的应用。
-
-```bash
-python manage.py startapp first
-```
-
-执行上面的命令会在当前路径下创建`first`目录，其目录结构如下所示：
-
-- `__init__.py`：一个空文件，告诉Python解释器这个目录应该被视为一个Python的包。
-- `admin.py`：可以用来注册模型，用于在Django框架自带的管理后台中管理模型。
-- `apps.py`：当前应用的配置文件。
-- migrations：存放与模型有关的数据库迁移信息。
-  - `__init__.py`：一个空文件，告诉Python解释器这个目录应该被视为一个Python的包。
-
-- `models.py`：存放应用的数据模型（MTV中的M）。
-- `tests.py`：包含测试应用各项功能的测试类和测试函数。
-- `views.py`：处理用户HTTP请求并返回HTTP响应的函数或类（MTV中的V）。
-
-### 模型
-
-模型准确且唯一的描述了数据。它包含您储存的数据的重要字段和行为。一般来说，每一个模型都映射一张数据库表。
-
-```python
-from django.db import models
-
-
-class Person(models.Model):
-    first_name = models.CharField(max_length=30)
-    last_name = models.CharField(max_length=30)
-```
-
-上面的 `Person` 模型会创建一个如下的数据库表：
-
-```python
-CREATE TABLE myapp_person (
-    "id" bigint NOT NULL PRIMARY KEY GENERATED BY DEFAULT AS IDENTITY,
-    "first_name" varchar(30) NOT NULL,
-    "last_name" varchar(30) NOT NULL
-);
-```
-
-一些技术上的说明：
-
-- 该表的名称 `myapp_person` 是自动从某些模型元数据中派生出来，但可以被改写。参阅 [表名称](https://docs.djangoproject.com/zh-hans/5.2/ref/models/options/#table-names) 获取更多信息。
-- 一个 `id` 字段会被自动添加，但是这种行为可以被改写。请参阅 [自动设置主键](https://docs.djangoproject.com/zh-hans/5.2/topics/db/models/#automatic-primary-key-fields)。
-
-#### 使用模型
-
-一旦你定义了你的模型，你需要告诉 Django 你准备 *使用* 这些模型。你需要修改设置文件中的 [`INSTALLED_APPS`](https://docs.djangoproject.com/zh-hans/5.2/ref/settings/#std-setting-INSTALLED_APPS) ，在这个设置中添加包含 `models.py` 文件的模块名称。
-
-例如，若模型位于项目中的 `myapp.models` 模块（ 此包结构由 [`manage.py startapp`](https://docs.djangoproject.com/zh-hans/5.2/ref/django-admin/#django-admin-startapp) 命令创建）， [`INSTALLED_APPS`](https://docs.djangoproject.com/zh-hans/5.2/ref/settings/#std-setting-INSTALLED_APPS) 应设置如下：
-
-```python
-INSTALLED_APPS = [
-    # ...
-    "myapp",
-    # ...
-]
-```
-
-#### 字段类型
-
-模型中每一个字段都应该是某个 [`Field`](https://docs.djangoproject.com/zh-hans/5.2/ref/models/fields/#django.db.models.Field) 类的实例， Django 利用这些字段类来实现以下功能：
-
-你可以在 [模型字段参考](https://docs.djangoproject.com/zh-hans/5.2/ref/models/fields/#model-field-types) 中看到完整列表
-
-##### 常用的字段列表
-
-######  `AutoField`
-
-一个 [`IntegerField`](https://docs.djangoproject.com/zh-hans/5.2/ref/models/fields/#django.db.models.IntegerField)，根据可用的 ID 自动递增。你通常不需要直接使用它；如果你没有指定，主键字段会自动添加到你的模型中。
-
-###### `BooleanField`
-
-一个 true／false 字段。
-
-###### `CharField`
-
-一个字符串字段，适用于小到大的字符串。
-
-对于大量的文本，使用 [`TextField`](https://docs.djangoproject.com/zh-hans/5.2/ref/models/fields/#django.db.models.TextField)。
-
-[`CharField`](https://docs.djangoproject.com/zh-hans/5.2/ref/models/fields/#django.db.models.CharField) 具有以下额外参数：CharField.max_length
-
-###### `DateField`
-
-- DateField.auto_now
-
-  每次保存对象时，自动将该字段设置为现在。对于“最后修改”的时间戳很有用。请注意，当前日期 *总是* 被使用，而不仅仅是一个你可以覆盖的默认值。只有在调用 [`Model.save()`](https://docs.djangoproject.com/zh-hans/5.2/ref/models/instances/#django.db.models.Model.save) 时，该字段才会自动更新。当以其他方式对其他字段进行更新时，如 [`QuerySet.update()`](https://docs.djangoproject.com/zh-hans/5.2/ref/models/querysets/#django.db.models.query.QuerySet.update)，该字段不会被更新，尽管你可以在这样的更新中为该字段指定一个自定义值。
-
-- DateField.auto_now_add
-
-  当第一次创建对象时，自动将该字段设置为现在。对创建时间戳很有用。请注意，当前日期是 *始终* 使用的；它不是一个你可以覆盖的默认值。因此，即使你在创建对象时为该字段设置了一个值，它也会被忽略。
-
-###### `DateTimeField`
-
-一个日期和时间，在 Python 中用一个 `datetime.datetime` 实例表示。与 [`DateField`](https://docs.djangoproject.com/zh-hans/5.2/ref/models/fields/#django.db.models.DateField) 一样，使用相同的额外参数。
-
-###### `EmailField`
-
-一个 [`CharField`](https://docs.djangoproject.com/zh-hans/5.2/ref/models/fields/#django.db.models.CharField)，使用 [`EmailValidator`](https://docs.djangoproject.com/zh-hans/5.2/ref/validators/#django.core.validators.EmailValidator) 来检查该值是否为有效的电子邮件地址。
-
-###### `FloatField`
-
-在 Python 中用一个 `float` 实例表示的浮点数。
-
-###### `IntegerField`
-
-一个整数。其值仅允许在特定范围内（取决于数据库）。在Django支持的所有数据库中，-2147483648到2147483647之间的值都是兼容的
-
-###### `JSONField`
-
-一个用于存储 JSON 编码数据的字段。
-
-###### `TextField`
-
-一个大的文本字段。
-
-###### `TimeField`
-
-一个时间，
-
-###### `URLField`
-
-该字段的默认表单部件是一个 [`URLInput`](https://docs.djangoproject.com/zh-hans/5.2/ref/forms/widgets/#django.forms.URLInput)。
-
-###### `UUIDField`
-
-通用唯一标识符是 [`primary_key`](https://docs.djangoproject.com/zh-hans/5.2/ref/models/fields/#django.db.models.Field.primary_key) 的 [`AutoField`](https://docs.djangoproject.com/zh-hans/5.2/ref/models/fields/#django.db.models.AutoField) 的一个很好的替代方案。数据库不会为你生成 UUID，所以建议使用 [`default`](https://docs.djangoproject.com/zh-hans/5.2/ref/models/fields/#django.db.models.Field.default) ：
-
-```python
-import uuid
-from django.db import models
-
-
-class MyUUIDModel(models.Model):
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    # other fields
-```
-
-##### 关系字段
-
-###### ForeignKey
-
-多对一关系。需要两个位置参数：模型关联的类和 [`on_delete`](https://docs.djangoproject.com/zh-hans/5.2/ref/models/fields/#django.db.models.ForeignKey.on_delete) 选项：
-
-```python
-from django.db import models
-
-
-class Manufacturer(models.Model):
-    name = models.TextField()
-
-
-class Car(models.Model):
-    manufacturer = models.ForeignKey(Manufacturer, on_delete=models.CASCADE)
-```
-
-第一个位置参数可以是具体模型类或对模型类的 [延迟引用](https://docs.djangoproject.com/zh-hans/5.2/ref/models/fields/#lazy-relationships)。还支持 [递归关系](https://docs.djangoproject.com/zh-hans/5.2/ref/models/fields/#recursive-relationships)，即模型与自身的关系。
-
-第二个位置参数级联删除。Django模拟了SQL约束ON DELETE CASCADE的行为，并且还会删除包含ForeignKey的对象。
-
-###### `ManyToManyField`
-
-一个多对多的关系。需要一个位置参数：模型相关的类，它的工作原理与 [`ForeignKey`](https://docs.djangoproject.com/zh-hans/5.2/ref/models/fields/#django.db.models.ForeignKey) 完全相同，包括 [递归](https://docs.djangoproject.com/zh-hans/5.2/ref/models/fields/#recursive-relationships) 和 [惰性](https://docs.djangoproject.com/zh-hans/5.2/ref/models/fields/#lazy-relationships) 关系。
-
-###### `OneToOneField`
-
-一对一的关系。
-
-#### 字段选项
-
-下面介绍一部分经常用到的通用参数：
-
-##### [`null`](https://docs.djangoproject.com/zh-hans/5.2/ref/models/fields/#django.db.models.Field.null)
-
-如果设置为 `True`，当该字段为空时，Django 会将数据库中该字段设置为 `NULL`。默认为 `False` 。
-
-##### [`blank`](https://docs.djangoproject.com/zh-hans/5.2/ref/models/fields/#django.db.models.Field.blank)
-
-如果设置为 `True`，该字段允许为空。默认为 `False`。
-
-请注意，这与 [`null`](https://docs.djangoproject.com/zh-hans/5.2/ref/models/fields/#django.db.models.Field.null) 不同。[`null`](https://docs.djangoproject.com/zh-hans/5.2/ref/models/fields/#django.db.models.Field.null) 完全与数据库相关联，而 [`blank`](https://docs.djangoproject.com/zh-hans/5.2/ref/models/fields/#django.db.models.Field.blank) 与验证有关。如果字段具有 [`blank=True`](https://docs.djangoproject.com/zh-hans/5.2/ref/models/fields/#django.db.models.Field.blank)，表单验证将允许输入空值。如果字段具有 [`blank=False`](https://docs.djangoproject.com/zh-hans/5.2/ref/models/fields/#django.db.models.Field.blank)，则字段为必填项。
-
-##### [`choices`](https://docs.djangoproject.com/zh-hans/5.2/ref/models/fields/#django.db.models.Field.choices)
-
-一个由二元组组成的序列、映射、枚举类型或可调用对象（无需参数并返回上述任意格式），用作该字段的选项。如果提供了此参数，默认的表单控件将变为选择框而非标准文本框，并将选项限制为给定的选项
-
-```python
-YEAR_IN_SCHOOL_CHOICES = [
-    ("FR", "Freshman"),
-    ("SO", "Sophomore"),
-    ("JR", "Junior"),
-    ("SR", "Senior"),
-    ("GR", "Graduate"),
-]
-```
-
-每个二元组的第一个值会储存在数据库中，而第二个值将只会用于在表单中显示。
-
-对于一个模型实例，要获取该字段二元组中相对应的第二个值，使用 [`get_FOO_display()`](https://docs.djangoproject.com/zh-hans/5.2/ref/models/instances/#django.db.models.Model.get_FOO_display) 方法。例如：
-
-```python
-from django.db import models
-
-
-class Person(models.Model):
-    SHIRT_SIZES = {
-        "S": "Small",
-        "M": "Medium",
-        "L": "Large",
-    }
-    name = models.CharField(max_length=60)
-    shirt_size = models.CharField(max_length=1, choices=SHIRT_SIZES)
-```
-
-```python
->>> p = Person(name="Fred Flintstone", shirt_size="L")
->>> p.save()
->>> p.shirt_size
-'L'
->>> p.get_shirt_size_display()
-'Large'
-```
-
-##### [`default`](https://docs.djangoproject.com/zh-hans/5.2/ref/models/fields/#django.db.models.Field.default)
-
-该字段的默认值。可以是一个值或者是个可调用的对象，如果是个可调用对象，每次实例化模型时都会调用该对象。
-
-##### [`primary_key`](https://docs.djangoproject.com/zh-hans/5.2/ref/models/fields/#django.db.models.Field.primary_key)
-
-如果设置为 `True` ，将该字段设置为该模型的主键
-
-##### [`unique`](https://docs.djangoproject.com/zh-hans/5.2/ref/models/fields/#django.db.models.Field.unique)
-
-如果设置为 `True`，这个字段的值必须在整个表中保持唯一。
-
-#### 字段备注名
-
-除了 [`ForeignKey`](https://docs.djangoproject.com/zh-hans/5.2/ref/models/fields/#django.db.models.ForeignKey)， [`ManyToManyField`](https://docs.djangoproject.com/zh-hans/5.2/ref/models/fields/#django.db.models.ManyToManyField) 和 [`OneToOneField`](https://docs.djangoproject.com/zh-hans/5.2/ref/models/fields/#django.db.models.OneToOneField)，任何字段类型都接收一个可选的位置参数 [`verbose_name`](https://docs.djangoproject.com/zh-hans/5.2/ref/models/fields/#django.db.models.Field.verbose_name)，如果未指定该参数值， Django 会自动使用字段的属性名作为该参数值，并且把下划线转换为空格。
-
-```python
-first_name = models.CharField("person's first name", max_length=30)
-```
-
-#### 关联关系
-
-## Django
-
-### 项目文件说明
-
-- `项目名/__init__.py`：空文件，告诉Python解释器这个目录应该被视为一个Python的包。
-- `项目名/settings.py`：Django项目的配置文件。
-- `项目名/urls.py`：Django项目的URL映射声明，就像是网站的“目录”。
-- `项目名/wsgi.py`：项目运行在WSGI兼容Web服务器上的入口文件。
-- `manage.py`： 管理Django项目的脚本程序。
-
-### 修改项目的配置文件`settings.py`。
-
-Django是一个支持国际化和本地化的框架，因此刚才我们看到的Django项目的默认首页也是支持国际化的，我们可以通过修改配置文件将默认语言修改为中文，时区设置为东八区。
-
-```python
-LANGUAGE_CODE = 'en-us'
-TIME_ZONE = 'UTC'
-```
-
-修改为以下内容。
-
-```python
-LANGUAGE_CODE = "zh-hans"
-TIME_ZONE = "Asia/Shanghai"
-```
-
-### 创建自己的应用
-
-如果要开发自己的Web应用，需要先在Django项目中创建“应用”，一个Django项目可以包含一个或多个应用。
-
-1. 在PyCharm的终端中执行下面的命令，创建名为`first`的应用。
-
-```bash
-python manage.py startapp first
-```
-
-执行上面的命令会在当前路径下创建`first`目录，其目录结构如下所示：
-
-- `__init__.py`：一个空文件，告诉Python解释器这个目录应该被视为一个Python的包。
-- `admin.py`：可以用来注册模型，用于在Django框架自带的管理后台中管理模型。
-- `apps.py`：当前应用的配置文件。
-- migrations：存放与模型有关的数据库迁移信息。
-  - `__init__.py`：一个空文件，告诉Python解释器这个目录应该被视为一个Python的包。
-
-- `models.py`：存放应用的数据模型（MTV中的M）。
-- `tests.py`：包含测试应用各项功能的测试类和测试函数。
-- `views.py`：处理用户HTTP请求并返回HTTP响应的函数或类（MTV中的V）。
-
-### 模型
-
-模型准确且唯一的描述了数据。它包含您储存的数据的重要字段和行为。一般来说，每一个模型都映射一张数据库表。
-
-```python
-from django.db import models
-
-
-class Person(models.Model):
-    first_name = models.CharField(max_length=30)
-    last_name = models.CharField(max_length=30)
-```
-
-上面的 `Person` 模型会创建一个如下的数据库表：
-
-```python
-CREATE TABLE myapp_person (
-    "id" bigint NOT NULL PRIMARY KEY GENERATED BY DEFAULT AS IDENTITY,
-    "first_name" varchar(30) NOT NULL,
-    "last_name" varchar(30) NOT NULL
-);
-```
-
-一些技术上的说明：
-
-- 该表的名称 `myapp_person` 是自动从某些模型元数据中派生出来，但可以被改写。参阅 [表名称](https://docs.djangoproject.com/zh-hans/5.2/ref/models/options/#table-names) 获取更多信息。
-- 一个 `id` 字段会被自动添加，但是这种行为可以被改写。请参阅 [自动设置主键](https://docs.djangoproject.com/zh-hans/5.2/topics/db/models/#automatic-primary-key-fields)。
-
-#### 使用模型
-
-一旦你定义了你的模型，你需要告诉 Django 你准备 *使用* 这些模型。你需要修改设置文件中的 [`INSTALLED_APPS`](https://docs.djangoproject.com/zh-hans/5.2/ref/settings/#std-setting-INSTALLED_APPS) ，在这个设置中添加包含 `models.py` 文件的模块名称。
-
-例如，若模型位于项目中的 `myapp.models` 模块（ 此包结构由 [`manage.py startapp`](https://docs.djangoproject.com/zh-hans/5.2/ref/django-admin/#django-admin-startapp) 命令创建）， [`INSTALLED_APPS`](https://docs.djangoproject.com/zh-hans/5.2/ref/settings/#std-setting-INSTALLED_APPS) 应设置如下：
-
-```python
-INSTALLED_APPS = [
-    # ...
-    "myapp",
-    # ...
-]
-```
-
-#### 字段类型
-
-模型中每一个字段都应该是某个 [`Field`](https://docs.djangoproject.com/zh-hans/5.2/ref/models/fields/#django.db.models.Field) 类的实例， Django 利用这些字段类来实现以下功能：
-
-你可以在 [模型字段参考](https://docs.djangoproject.com/zh-hans/5.2/ref/models/fields/#model-field-types) 中看到完整列表
-
-##### 常用的字段列表
-
-######  `AutoField`
-
-一个 [`IntegerField`](https://docs.djangoproject.com/zh-hans/5.2/ref/models/fields/#django.db.models.IntegerField)，根据可用的 ID 自动递增。你通常不需要直接使用它；如果你没有指定，主键字段会自动添加到你的模型中。
-
-###### `BooleanField`
-
-一个 true／false 字段。
-
-###### `CharField`
-
-一个字符串字段，适用于小到大的字符串。
-
-对于大量的文本，使用 [`TextField`](https://docs.djangoproject.com/zh-hans/5.2/ref/models/fields/#django.db.models.TextField)。
-
-[`CharField`](https://docs.djangoproject.com/zh-hans/5.2/ref/models/fields/#django.db.models.CharField) 具有以下额外参数：CharField.max_length
-
-###### `DateField`
-
-- DateField.auto_now
-
-  每次保存对象时，自动将该字段设置为现在。对于“最后修改”的时间戳很有用。请注意，当前日期 *总是* 被使用，而不仅仅是一个你可以覆盖的默认值。只有在调用 [`Model.save()`](https://docs.djangoproject.com/zh-hans/5.2/ref/models/instances/#django.db.models.Model.save) 时，该字段才会自动更新。当以其他方式对其他字段进行更新时，如 [`QuerySet.update()`](https://docs.djangoproject.com/zh-hans/5.2/ref/models/querysets/#django.db.models.query.QuerySet.update)，该字段不会被更新，尽管你可以在这样的更新中为该字段指定一个自定义值。
-
-- DateField.auto_now_add
-
-  当第一次创建对象时，自动将该字段设置为现在。对创建时间戳很有用。请注意，当前日期是 *始终* 使用的；它不是一个你可以覆盖的默认值。因此，即使你在创建对象时为该字段设置了一个值，它也会被忽略。
-
-###### `DateTimeField`
-
-一个日期和时间，在 Python 中用一个 `datetime.datetime` 实例表示。与 [`DateField`](https://docs.djangoproject.com/zh-hans/5.2/ref/models/fields/#django.db.models.DateField) 一样，使用相同的额外参数。
-
-###### `EmailField`
-
-一个 [`CharField`](https://docs.djangoproject.com/zh-hans/5.2/ref/models/fields/#django.db.models.CharField)，使用 [`EmailValidator`](https://docs.djangoproject.com/zh-hans/5.2/ref/validators/#django.core.validators.EmailValidator) 来检查该值是否为有效的电子邮件地址。
-
-###### `FloatField`
-
-在 Python 中用一个 `float` 实例表示的浮点数。
-
-###### `IntegerField`
-
-一个整数。其值仅允许在特定范围内（取决于数据库）。在Django支持的所有数据库中，-2147483648到2147483647之间的值都是兼容的
-
-###### `JSONField`
-
-一个用于存储 JSON 编码数据的字段。
-
-###### `TextField`
-
-一个大的文本字段。
-
-###### `TimeField`
-
-一个时间，
-
-###### `URLField`
-
-该字段的默认表单部件是一个 [`URLInput`](https://docs.djangoproject.com/zh-hans/5.2/ref/forms/widgets/#django.forms.URLInput)。
-
-###### `UUIDField`
-
-通用唯一标识符是 [`primary_key`](https://docs.djangoproject.com/zh-hans/5.2/ref/models/fields/#django.db.models.Field.primary_key) 的 [`AutoField`](https://docs.djangoproject.com/zh-hans/5.2/ref/models/fields/#django.db.models.AutoField) 的一个很好的替代方案。数据库不会为你生成 UUID，所以建议使用 [`default`](https://docs.djangoproject.com/zh-hans/5.2/ref/models/fields/#django.db.models.Field.default) ：
-
-```python
-import uuid
-from django.db import models
-
-
-class MyUUIDModel(models.Model):
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    # other fields
-```
-
-##### 关系字段
-
-###### ForeignKey
-
-多对一关系。需要两个位置参数：模型关联的类和 [`on_delete`](https://docs.djangoproject.com/zh-hans/5.2/ref/models/fields/#django.db.models.ForeignKey.on_delete) 选项：
-
-```python
-from django.db import models
-
-
-class Manufacturer(models.Model):
-    name = models.TextField()
-
-
-class Car(models.Model):
-    manufacturer = models.ForeignKey(Manufacturer, on_delete=models.CASCADE)
-```
-
-第一个位置参数可以是具体模型类或对模型类的 [延迟引用](https://docs.djangoproject.com/zh-hans/5.2/ref/models/fields/#lazy-relationships)。还支持 [递归关系](https://docs.djangoproject.com/zh-hans/5.2/ref/models/fields/#recursive-relationships)，即模型与自身的关系。
-
-第二个位置参数级联删除。Django模拟了SQL约束ON DELETE CASCADE的行为，并且还会删除包含ForeignKey的对象。
-
-###### `ManyToManyField`
-
-一个多对多的关系。需要一个位置参数：模型相关的类，它的工作原理与 [`ForeignKey`](https://docs.djangoproject.com/zh-hans/5.2/ref/models/fields/#django.db.models.ForeignKey) 完全相同，包括 [递归](https://docs.djangoproject.com/zh-hans/5.2/ref/models/fields/#recursive-relationships) 和 [惰性](https://docs.djangoproject.com/zh-hans/5.2/ref/models/fields/#lazy-relationships) 关系。
-
-###### `OneToOneField`
-
-一对一的关系。
-
-#### 字段选项
-
-下面介绍一部分经常用到的通用参数：
-
-##### [`null`](https://docs.djangoproject.com/zh-hans/5.2/ref/models/fields/#django.db.models.Field.null)
-
-如果设置为 `True`，当该字段为空时，Django 会将数据库中该字段设置为 `NULL`。默认为 `False` 。
-
-##### [`blank`](https://docs.djangoproject.com/zh-hans/5.2/ref/models/fields/#django.db.models.Field.blank)
-
-如果设置为 `True`，该字段允许为空。默认为 `False`。
-
-请注意，这与 [`null`](https://docs.djangoproject.com/zh-hans/5.2/ref/models/fields/#django.db.models.Field.null) 不同。[`null`](https://docs.djangoproject.com/zh-hans/5.2/ref/models/fields/#django.db.models.Field.null) 完全与数据库相关联，而 [`blank`](https://docs.djangoproject.com/zh-hans/5.2/ref/models/fields/#django.db.models.Field.blank) 与验证有关。如果字段具有 [`blank=True`](https://docs.djangoproject.com/zh-hans/5.2/ref/models/fields/#django.db.models.Field.blank)，表单验证将允许输入空值。如果字段具有 [`blank=False`](https://docs.djangoproject.com/zh-hans/5.2/ref/models/fields/#django.db.models.Field.blank)，则字段为必填项。
-
-##### [`choices`](https://docs.djangoproject.com/zh-hans/5.2/ref/models/fields/#django.db.models.Field.choices)
-
-一个由二元组组成的序列、映射、枚举类型或可调用对象（无需参数并返回上述任意格式），用作该字段的选项。如果提供了此参数，默认的表单控件将变为选择框而非标准文本框，并将选项限制为给定的选项
-
-```python
-YEAR_IN_SCHOOL_CHOICES = [
-    ("FR", "Freshman"),
-    ("SO", "Sophomore"),
-    ("JR", "Junior"),
-    ("SR", "Senior"),
-    ("GR", "Graduate"),
-]
-```
-
-每个二元组的第一个值会储存在数据库中，而第二个值将只会用于在表单中显示。
-
-对于一个模型实例，要获取该字段二元组中相对应的第二个值，使用 [`get_FOO_display()`](https://docs.djangoproject.com/zh-hans/5.2/ref/models/instances/#django.db.models.Model.get_FOO_display) 方法。例如：
-
-```python
-from django.db import models
-
-
-class Person(models.Model):
-    SHIRT_SIZES = {
-        "S": "Small",
-        "M": "Medium",
-        "L": "Large",
-    }
-    name = models.CharField(max_length=60)
-    shirt_size = models.CharField(max_length=1, choices=SHIRT_SIZES)
-```
-
-```python
->>> p = Person(name="Fred Flintstone", shirt_size="L")
->>> p.save()
->>> p.shirt_size
-'L'
->>> p.get_shirt_size_display()
-'Large'
-```
-
-##### [`default`](https://docs.djangoproject.com/zh-hans/5.2/ref/models/fields/#django.db.models.Field.default)
-
-该字段的默认值。可以是一个值或者是个可调用的对象，如果是个可调用对象，每次实例化模型时都会调用该对象。
-
-##### [`primary_key`](https://docs.djangoproject.com/zh-hans/5.2/ref/models/fields/#django.db.models.Field.primary_key)
-
-如果设置为 `True` ，将该字段设置为该模型的主键
-
-##### [`unique`](https://docs.djangoproject.com/zh-hans/5.2/ref/models/fields/#django.db.models.Field.unique)
-
-如果设置为 `True`，这个字段的值必须在整个表中保持唯一。
-
-#### 字段备注名
-
-除了 [`ForeignKey`](https://docs.djangoproject.com/zh-hans/5.2/ref/models/fields/#django.db.models.ForeignKey)， [`ManyToManyField`](https://docs.djangoproject.com/zh-hans/5.2/ref/models/fields/#django.db.models.ManyToManyField) 和 [`OneToOneField`](https://docs.djangoproject.com/zh-hans/5.2/ref/models/fields/#django.db.models.OneToOneField)，任何字段类型都接收一个可选的位置参数 [`verbose_name`](https://docs.djangoproject.com/zh-hans/5.2/ref/models/fields/#django.db.models.Field.verbose_name)，如果未指定该参数值， Django 会自动使用字段的属性名作为该参数值，并且把下划线转换为空格。
-
-```python
-first_name = models.CharField("person's first name", max_length=30)
-```
-
-#### 关联关系
-
-## Django
-
-### 项目文件说明
-
-- `项目名/__init__.py`：空文件，告诉Python解释器这个目录应该被视为一个Python的包。
-- `项目名/settings.py`：Django项目的配置文件。
-- `项目名/urls.py`：Django项目的URL映射声明，就像是网站的“目录”。
-- `项目名/wsgi.py`：项目运行在WSGI兼容Web服务器上的入口文件。
-- `manage.py`： 管理Django项目的脚本程序。
-
-### 修改项目的配置文件`settings.py`。
-
-Django是一个支持国际化和本地化的框架，因此刚才我们看到的Django项目的默认首页也是支持国际化的，我们可以通过修改配置文件将默认语言修改为中文，时区设置为东八区。
-
-```python
-LANGUAGE_CODE = 'en-us'
-TIME_ZONE = 'UTC'
-```
-
-修改为以下内容。
-
-```python
-LANGUAGE_CODE = "zh-hans"
-TIME_ZONE = "Asia/Shanghai"
-```
-
-### 创建自己的应用
-
-如果要开发自己的Web应用，需要先在Django项目中创建“应用”，一个Django项目可以包含一个或多个应用。
-
-1. 在PyCharm的终端中执行下面的命令，创建名为`first`的应用。
-
-```bash
-python manage.py startapp first
-```
-
-执行上面的命令会在当前路径下创建`first`目录，其目录结构如下所示：
-
-- `__init__.py`：一个空文件，告诉Python解释器这个目录应该被视为一个Python的包。
-- `admin.py`：可以用来注册模型，用于在Django框架自带的管理后台中管理模型。
-- `apps.py`：当前应用的配置文件。
-- migrations：存放与模型有关的数据库迁移信息。
-  - `__init__.py`：一个空文件，告诉Python解释器这个目录应该被视为一个Python的包。
-
-- `models.py`：存放应用的数据模型（MTV中的M）。
-- `tests.py`：包含测试应用各项功能的测试类和测试函数。
-- `views.py`：处理用户HTTP请求并返回HTTP响应的函数或类（MTV中的V）。
-
-### 模型
-
-模型准确且唯一的描述了数据。它包含您储存的数据的重要字段和行为。一般来说，每一个模型都映射一张数据库表。
-
-```python
-from django.db import models
-
-
-class Person(models.Model):
-    first_name = models.CharField(max_length=30)
-    last_name = models.CharField(max_length=30)
-```
-
-上面的 `Person` 模型会创建一个如下的数据库表：
-
-```python
-CREATE TABLE myapp_person (
-    "id" bigint NOT NULL PRIMARY KEY GENERATED BY DEFAULT AS IDENTITY,
-    "first_name" varchar(30) NOT NULL,
-    "last_name" varchar(30) NOT NULL
-);
-```
-
-一些技术上的说明：
-
-- 该表的名称 `myapp_person` 是自动从某些模型元数据中派生出来，但可以被改写。参阅 [表名称](https://docs.djangoproject.com/zh-hans/5.2/ref/models/options/#table-names) 获取更多信息。
-- 一个 `id` 字段会被自动添加，但是这种行为可以被改写。请参阅 [自动设置主键](https://docs.djangoproject.com/zh-hans/5.2/topics/db/models/#automatic-primary-key-fields)。
-
-#### 使用模型
-
-一旦你定义了你的模型，你需要告诉 Django 你准备 *使用* 这些模型。你需要修改设置文件中的 [`INSTALLED_APPS`](https://docs.djangoproject.com/zh-hans/5.2/ref/settings/#std-setting-INSTALLED_APPS) ，在这个设置中添加包含 `models.py` 文件的模块名称。
-
-例如，若模型位于项目中的 `myapp.models` 模块（ 此包结构由 [`manage.py startapp`](https://docs.djangoproject.com/zh-hans/5.2/ref/django-admin/#django-admin-startapp) 命令创建）， [`INSTALLED_APPS`](https://docs.djangoproject.com/zh-hans/5.2/ref/settings/#std-setting-INSTALLED_APPS) 应设置如下：
-
-```python
-INSTALLED_APPS = [
-    # ...
-    "myapp",
-    # ...
-]
-```
-
-#### 字段类型
-
-模型中每一个字段都应该是某个 [`Field`](https://docs.djangoproject.com/zh-hans/5.2/ref/models/fields/#django.db.models.Field) 类的实例， Django 利用这些字段类来实现以下功能：
-
-你可以在 [模型字段参考](https://docs.djangoproject.com/zh-hans/5.2/ref/models/fields/#model-field-types) 中看到完整列表
-
-##### 常用的字段列表
-
-######  `AutoField`
-
-一个 [`IntegerField`](https://docs.djangoproject.com/zh-hans/5.2/ref/models/fields/#django.db.models.IntegerField)，根据可用的 ID 自动递增。你通常不需要直接使用它；如果你没有指定，主键字段会自动添加到你的模型中。
-
-###### `BooleanField`
-
-一个 true／false 字段。
-
-###### `CharField`
-
-一个字符串字段，适用于小到大的字符串。
-
-对于大量的文本，使用 [`TextField`](https://docs.djangoproject.com/zh-hans/5.2/ref/models/fields/#django.db.models.TextField)。
-
-[`CharField`](https://docs.djangoproject.com/zh-hans/5.2/ref/models/fields/#django.db.models.CharField) 具有以下额外参数：CharField.max_length
-
-###### `DateField`
-
-- DateField.auto_now
-
-  每次保存对象时，自动将该字段设置为现在。对于“最后修改”的时间戳很有用。请注意，当前日期 *总是* 被使用，而不仅仅是一个你可以覆盖的默认值。只有在调用 [`Model.save()`](https://docs.djangoproject.com/zh-hans/5.2/ref/models/instances/#django.db.models.Model.save) 时，该字段才会自动更新。当以其他方式对其他字段进行更新时，如 [`QuerySet.update()`](https://docs.djangoproject.com/zh-hans/5.2/ref/models/querysets/#django.db.models.query.QuerySet.update)，该字段不会被更新，尽管你可以在这样的更新中为该字段指定一个自定义值。
-
-- DateField.auto_now_add
-
-  当第一次创建对象时，自动将该字段设置为现在。对创建时间戳很有用。请注意，当前日期是 *始终* 使用的；它不是一个你可以覆盖的默认值。因此，即使你在创建对象时为该字段设置了一个值，它也会被忽略。
-
-###### `DateTimeField`
-
-一个日期和时间，在 Python 中用一个 `datetime.datetime` 实例表示。与 [`DateField`](https://docs.djangoproject.com/zh-hans/5.2/ref/models/fields/#django.db.models.DateField) 一样，使用相同的额外参数。
-
-###### `EmailField`
-
-一个 [`CharField`](https://docs.djangoproject.com/zh-hans/5.2/ref/models/fields/#django.db.models.CharField)，使用 [`EmailValidator`](https://docs.djangoproject.com/zh-hans/5.2/ref/validators/#django.core.validators.EmailValidator) 来检查该值是否为有效的电子邮件地址。
-
-###### `FloatField`
-
-在 Python 中用一个 `float` 实例表示的浮点数。
-
-###### `IntegerField`
-
-一个整数。其值仅允许在特定范围内（取决于数据库）。在Django支持的所有数据库中，-2147483648到2147483647之间的值都是兼容的
-
-###### `JSONField`
-
-一个用于存储 JSON 编码数据的字段。
-
-###### `TextField`
-
-一个大的文本字段。
-
-###### `TimeField`
-
-一个时间，
-
-###### `URLField`
-
-该字段的默认表单部件是一个 [`URLInput`](https://docs.djangoproject.com/zh-hans/5.2/ref/forms/widgets/#django.forms.URLInput)。
-
-###### `UUIDField`
-
-通用唯一标识符是 [`primary_key`](https://docs.djangoproject.com/zh-hans/5.2/ref/models/fields/#django.db.models.Field.primary_key) 的 [`AutoField`](https://docs.djangoproject.com/zh-hans/5.2/ref/models/fields/#django.db.models.AutoField) 的一个很好的替代方案。数据库不会为你生成 UUID，所以建议使用 [`default`](https://docs.djangoproject.com/zh-hans/5.2/ref/models/fields/#django.db.models.Field.default) ：
-
-```python
-import uuid
-from django.db import models
-
-
-class MyUUIDModel(models.Model):
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    # other fields
-```
-
-##### 关系字段
-
-###### ForeignKey
-
-多对一关系。需要两个位置参数：模型关联的类和 [`on_delete`](https://docs.djangoproject.com/zh-hans/5.2/ref/models/fields/#django.db.models.ForeignKey.on_delete) 选项：
-
-```python
-from django.db import models
-
-
-class Manufacturer(models.Model):
-    name = models.TextField()
-
-
-class Car(models.Model):
-    manufacturer = models.ForeignKey(Manufacturer, on_delete=models.CASCADE)
-```
-
-第一个位置参数可以是具体模型类或对模型类的 [延迟引用](https://docs.djangoproject.com/zh-hans/5.2/ref/models/fields/#lazy-relationships)。还支持 [递归关系](https://docs.djangoproject.com/zh-hans/5.2/ref/models/fields/#recursive-relationships)，即模型与自身的关系。
-
-第二个位置参数级联删除。Django模拟了SQL约束ON DELETE CASCADE的行为，并且还会删除包含ForeignKey的对象。
-
-###### `ManyToManyField`
-
-一个多对多的关系。需要一个位置参数：模型相关的类，它的工作原理与 [`ForeignKey`](https://docs.djangoproject.com/zh-hans/5.2/ref/models/fields/#django.db.models.ForeignKey) 完全相同，包括 [递归](https://docs.djangoproject.com/zh-hans/5.2/ref/models/fields/#recursive-relationships) 和 [惰性](https://docs.djangoproject.com/zh-hans/5.2/ref/models/fields/#lazy-relationships) 关系。
-
-###### `OneToOneField`
-
-一对一的关系。
-
-#### 字段选项
-
-下面介绍一部分经常用到的通用参数：
-
-##### [`null`](https://docs.djangoproject.com/zh-hans/5.2/ref/models/fields/#django.db.models.Field.null)
-
-如果设置为 `True`，当该字段为空时，Django 会将数据库中该字段设置为 `NULL`。默认为 `False` 。
-
-##### [`blank`](https://docs.djangoproject.com/zh-hans/5.2/ref/models/fields/#django.db.models.Field.blank)
-
-如果设置为 `True`，该字段允许为空。默认为 `False`。
-
-请注意，这与 [`null`](https://docs.djangoproject.com/zh-hans/5.2/ref/models/fields/#django.db.models.Field.null) 不同。[`null`](https://docs.djangoproject.com/zh-hans/5.2/ref/models/fields/#django.db.models.Field.null) 完全与数据库相关联，而 [`blank`](https://docs.djangoproject.com/zh-hans/5.2/ref/models/fields/#django.db.models.Field.blank) 与验证有关。如果字段具有 [`blank=True`](https://docs.djangoproject.com/zh-hans/5.2/ref/models/fields/#django.db.models.Field.blank)，表单验证将允许输入空值。如果字段具有 [`blank=False`](https://docs.djangoproject.com/zh-hans/5.2/ref/models/fields/#django.db.models.Field.blank)，则字段为必填项。
-
-##### [`choices`](https://docs.djangoproject.com/zh-hans/5.2/ref/models/fields/#django.db.models.Field.choices)
-
-一个由二元组组成的序列、映射、枚举类型或可调用对象（无需参数并返回上述任意格式），用作该字段的选项。如果提供了此参数，默认的表单控件将变为选择框而非标准文本框，并将选项限制为给定的选项
-
-```python
-YEAR_IN_SCHOOL_CHOICES = [
-    ("FR", "Freshman"),
-    ("SO", "Sophomore"),
-    ("JR", "Junior"),
-    ("SR", "Senior"),
-    ("GR", "Graduate"),
-]
-```
-
-每个二元组的第一个值会储存在数据库中，而第二个值将只会用于在表单中显示。
-
-对于一个模型实例，要获取该字段二元组中相对应的第二个值，使用 [`get_FOO_display()`](https://docs.djangoproject.com/zh-hans/5.2/ref/models/instances/#django.db.models.Model.get_FOO_display) 方法。例如：
-
-```python
-from django.db import models
-
-
-class Person(models.Model):
-    SHIRT_SIZES = {
-        "S": "Small",
-        "M": "Medium",
-        "L": "Large",
-    }
-    name = models.CharField(max_length=60)
-    shirt_size = models.CharField(max_length=1, choices=SHIRT_SIZES)
-```
-
-```python
->>> p = Person(name="Fred Flintstone", shirt_size="L")
->>> p.save()
->>> p.shirt_size
-'L'
->>> p.get_shirt_size_display()
-'Large'
-```
-
-##### [`default`](https://docs.djangoproject.com/zh-hans/5.2/ref/models/fields/#django.db.models.Field.default)
-
-该字段的默认值。可以是一个值或者是个可调用的对象，如果是个可调用对象，每次实例化模型时都会调用该对象。
-
-##### [`primary_key`](https://docs.djangoproject.com/zh-hans/5.2/ref/models/fields/#django.db.models.Field.primary_key)
-
-如果设置为 `True` ，将该字段设置为该模型的主键
-
-##### [`unique`](https://docs.djangoproject.com/zh-hans/5.2/ref/models/fields/#django.db.models.Field.unique)
-
-如果设置为 `True`，这个字段的值必须在整个表中保持唯一。
-
-#### 字段备注名
-
-除了 [`ForeignKey`](https://docs.djangoproject.com/zh-hans/5.2/ref/models/fields/#django.db.models.ForeignKey)， [`ManyToManyField`](https://docs.djangoproject.com/zh-hans/5.2/ref/models/fields/#django.db.models.ManyToManyField) 和 [`OneToOneField`](https://docs.djangoproject.com/zh-hans/5.2/ref/models/fields/#django.db.models.OneToOneField)，任何字段类型都接收一个可选的位置参数 [`verbose_name`](https://docs.djangoproject.com/zh-hans/5.2/ref/models/fields/#django.db.models.Field.verbose_name)，如果未指定该参数值， Django 会自动使用字段的属性名作为该参数值，并且把下划线转换为空格。
-
-```python
-first_name = models.CharField("person's first name", max_length=30)
-```
-
-#### 关联关系
-
-显然，关系型数据库的强大之处在于各表之间的关联关系。 Django 提供了定义三种最常见的数据库关联关系的方法：多对一，多对多，一对一。
-
-##### 多对一关联
-
-定义一个多对一的关联关系，使用 [`django.db.models.ForeignKey`](https://docs.djangoproject.com/zh-hans/5.2/ref/models/fields/#django.db.models.ForeignKey) 类。就和其它 [`Field`](https://docs.djangoproject.com/zh-hans/5.2/ref/models/fields/#django.db.models.Field) 字段类型一样，只需要在你模型中添加一个值为该类的属性。
-
-[`ForeignKey`](https://docs.djangoproject.com/zh-hans/5.2/ref/models/fields/#django.db.models.ForeignKey) 类需要添加一个位置参数，即你想要关联的模型类名。
-
-例如，如果一个 `Car` 模型有一个制造者 `Manufacturer` --就是说一个 `Manufacturer` 制造许多辆车，但是每辆车都仅有一个制造者-- 那么使用下面的方法定义这个关系：
-
-```python
-from django.db import models
-
-
-class Manufacturer(models.Model):
-    # ...
-    pass
-
-
-class Car(models.Model):
-    manufacturer = models.ForeignKey(Manufacturer, on_delete=models.CASCADE)
-    # ...
-```
-
-##### 多对多关联
-
-例如：如果 `Pizza` 含有多种 `Topping` （配料） -- 也就是一种 `Topping` 可能存在于多个 `Pizza` 中，并且每个 `Pizza` 含有多种 `Topping` --那么可以这样表示这种关系：
-
-```python
-from django.db import models
-
-
-class Topping(models.Model):
-    # ...
-    pass
-
-
-class Pizza(models.Model):
-    # ...
-    toppings = models.ManyToManyField(Topping)
-
-```
-
-建议设置 [`ManyToManyField`](https://docs.djangoproject.com/zh-hans/5.2/ref/models/fields/#django.db.models.ManyToManyField) 字段名（上例中的 `toppings` ）为一个复数名词，表示所要关联的模型对象的集合。
-
-对于多对多关联关系的两个模型，可以在任何一个模型中添加 [`ManyToManyField`](https://docs.djangoproject.com/zh-hans/5.2/ref/models/fields/#django.db.models.ManyToManyField) 字段，但只能选择一个模型设置该字段，即不能同时在两模型中添加该字段。
-
-一般来讲，应该把 [`ManyToManyField`](https://docs.djangoproject.com/zh-hans/5.2/ref/models/fields/#django.db.models.ManyToManyField) 实例放到需要在表单中被编辑的对象中。在之前的例子中， `toppings` 被放在 `Pizza` 当中（而不是 `Topping` 中有指向 `pizzas` 的 [`ManyToManyField`](https://docs.djangoproject.com/zh-hans/5.2/ref/models/fields/#django.db.models.ManyToManyField) 实例 ）因为相较于配料被放在不同的披萨当中，披萨当中有很多种配料更加符合常理。按照先前说的，在编辑 `Pizza` 的表单时用户可以选择多种配料。
-
-###### 在多对多(many-to-many)关系中添加添加额外的属性字段
-
-举例来讲，考虑一个需要跟踪音乐人属于哪个音乐组的应用程序。在人和他们所在的组之间有一个多对多关系，你可以使用 [`ManyToManyField`](https://docs.djangoproject.com/zh-hans/5.2/ref/models/fields/#django.db.models.ManyToManyField) 来代表这个关系。然而，你想要记录更多的信息在这样的关联关系当中，比如你想要记录某人是何时加入一个组的。
-
-对于这些情况，Django 允许你指定用于控制多对多关系的模型。你可以在中间模型当中添加额外的字段。在实例化 [`ManyToManyField`](https://docs.djangoproject.com/zh-hans/5.2/ref/models/fields/#django.db.models.ManyToManyField) 的时候使用 [`through`](https://docs.djangoproject.com/zh-hans/5.2/ref/models/fields/#django.db.models.ManyToManyField.through) 参数指定多对多关系使用哪个中间模型。对于我们举的音乐家的例子，代码如下：
-
-```python
-from django.db import models
-
-
-class Person(models.Model):
-    name = models.CharField(max_length=128)
-
-    def __str__(self):
-        return self.name
-
-
-class Group(models.Model):
-    name = models.CharField(max_length=128)
-    members = models.ManyToManyField(Person, through="Membership")
-
-    def __str__(self):
-        return self.name
-
-
-class Membership(models.Model):
-    person = models.ForeignKey(Person, on_delete=models.CASCADE)
-    group = models.ForeignKey(Group, on_delete=models.CASCADE)
-    date_joined = models.DateField()
-    invite_reason = models.CharField(max_length=64)
-
-    class Meta:
-        constraints = [
-            models.UniqueConstraint(
-                fields=["person", "group"], name="unique_person_group"
-            )
-        ]
-```
-
-##### 一对一关联
-
-使用 [`OneToOneField`](https://docs.djangoproject.com/zh-hans/5.2/ref/models/fields/#django.db.models.OneToOneField) 来定义一对一关系。就像使用其他类型的 `Field` 一样：在模型属性中包含它。
 
 #### `Meta` 选项
 
@@ -1502,7 +375,7 @@ class Ox(models.Model):
 
 在模型中添加自定义方法会给你的对象提供自定义的“行级”操作能力。与之对应的是类 [`Manager`](https://docs.djangoproject.com/zh-hans/5.2/topics/db/managers/#django.db.models.Manager) 的方法意在提供“表级”的操作，模型方法应该在某个对象实例上生效。
 
-### 数据库操作
+## 数据库操作
 
 一旦创建 [数据模型](https://docs.djangoproject.com/zh-hans/5.2/topics/db/models/) 后，Django 自动给予你一套数据库抽象 API，允许你创建，检索，更新和删除对象。
 
@@ -1535,6 +408,16 @@ class Ox(models.Model):
 ```
 
 #### 检索对象
+
+::: tip
+
+| **方法**   | **返回类型**       | **查询条件**       | **结果数量** | **异常处理**              |
+| ---------- | ------------------ | ------------------ | ------------ | ------------------------- |
+| `get()`    | 单个模型实例       | 必须唯一匹配       | 1 条         | 无结果或多余结果时抛异常  |
+| `all()`    | QuerySet（查询集） | 无条件（默认全表） | 所有记录     | 不抛异常，返回空 QuerySet |
+| `filter()` | QuerySet（查询集） | 指定过滤条件       | 0 或多条     | 不抛异常，返回空 QuerySe  |
+
+:::
 
 要从数据库检索对象，要通过模型类的 [`Manager`](https://docs.djangoproject.com/zh-hans/5.2/topics/db/managers/#django.db.models.Manager) 构建一个 [`QuerySet`](https://docs.djangoproject.com/zh-hans/5.2/ref/models/querysets/#django.db.models.query.QuerySet)。
 
@@ -1768,5 +651,138 @@ Django 提供了 [`F 表达式`](https://docs.djangoproject.com/zh-hans/5.2/ref/
 ```python
 >>> from django.db.models import F
 >>> Entry.objects.filter(number_of_comments__gt=F("number_of_pingbacks"))
+```
+
+## 视图
+
+::: tip
+
+每个视图必须要做的只有两件事：返回一个包含被请求页面内容的 [`HttpResponse`](https://docs.djangoproject.com/zh-hans/6.0/ref/request-response/#django.http.HttpResponse) 对象，或者抛出一个异常，比如 [`Http404`](https://docs.djangoproject.com/zh-hans/6.0/topics/http/views/#django.http.Http404) 。至于你还想干些什么，随便你。
+
+你的视图可以从数据库里读取记录，可以使用一个模板引擎（比如 Django 自带的，或者其他第三方的），可以生成一个 PDF 文件，可以输出一个 XML，创建一个 ZIP 文件，你可以做任何你想做的事，使用任何你想用的 Python 库。
+
+Django 只要求返回的是一个 [`HttpResponse`](https://docs.djangoproject.com/zh-hans/6.0/ref/request-response/#django.http.HttpResponse) ，或者抛出一个异常。
+
+:::
+
+现在让我们向 `polls/views.py` 里添加更多视图。这些视图有一些不同，因为他们接收参数：
+
+```python
+# polls/views.py
+def detail(request, question_id):
+    return HttpResponse("You're looking at question %s." % question_id)
+
+
+def results(request, question_id):
+    response = "You're looking at the results of question %s."
+    return HttpResponse(response % question_id)
+
+
+def vote(request, question_id):
+    return HttpResponse("You're voting on question %s." % question_id)
+```
+
+把这些新视图添加进 `polls.urls` 模块里，只要添加几个 `url()` 函数调用就行：
+
+```python
+# polls/urls.py
+from django.urls import path
+
+from . import views
+
+urlpatterns = [
+    # ex: /polls/
+    path("", views.index, name="index"),
+    # ex: /polls/5/
+    path("<int:question_id>/", views.detail, name="detail"),
+    # ex: /polls/5/results/
+    path("<int:question_id>/results/", views.results, name="results"),
+    # ex: /polls/5/vote/
+    path("<int:question_id>/vote/", views.vote, name="vote"),
+]
+```
+
+问题 `question_id=34` 来自 `<int:question_id>`。使用尖括号 "获得" 网址部分后发送给视图函数作为一个关键字参数。字符串的 `question_id` 部分定义了要使用的名字，用来识别相匹配的模式，而 `int` 部分是一种转换形式，用来确定应该匹配网址路径的什么模式。冒号 (`:`) 用来分隔转换形式和模式名。
+
+## 请求和响应对象
+
+当一个页面被请求时，Django 会创建一个 [`HttpRequest`](https://docs.djangoproject.com/zh-hans/6.0/ref/request-response/#django.http.HttpRequest) 对象，这个对象包含了请求的元数据。然后，Django 加载相应的视图，将 [`HttpRequest`](https://docs.djangoproject.com/zh-hans/6.0/ref/request-response/#django.http.HttpRequest) 作为视图函数的第一个参数。每个视图负责返回一个 [`HttpResponse`](https://docs.djangoproject.com/zh-hans/6.0/ref/request-response/#django.http.HttpResponse) 对象。
+
+### `HttpRequest` 对象
+
+- HttpRequest.method
+
+  代表请求中使用的 HTTP 方法的字符串。保证是大写字母。例如：
+
+  ```python
+  if request.method == "GET":
+      do_something()
+  elif request.method == "POST":
+      do_something_else()
+  ```
+
+- HttpRequest.GET
+
+  一个类似字典的对象，包含所有给定的 HTTP GET 参数
+
+- HttpRequest.POST
+
+  一个类似字典的对象，包含所有给定的 HTTP POST 参数，前提是请求包含表单数据。
+
+- HttpRequest.headers
+
+​		一个不区分大小写的类似字典的对象，提供对请求中所有 HTTP 前缀头的访问
+
+### `QueryDict` 对象
+
+::: tip
+
+[`QueryDict`](https://docs.djangoproject.com/zh-hans/6.0/ref/request-response/#django.http.QueryDict) 实现了所有标准的字典方法，因为它是字典的一个子类。
+
+:::
+
+在一个 [`HttpRequest`](https://docs.djangoproject.com/zh-hans/6.0/ref/request-response/#django.http.HttpRequest) 对象中， [`GET`](https://docs.djangoproject.com/zh-hans/6.0/ref/request-response/#django.http.HttpRequest.GET) 和 [`POST`](https://docs.djangoproject.com/zh-hans/6.0/ref/request-response/#django.http.HttpRequest.POST) 属性是 `django.http.QueryDict` 的实例，这是一个类似字典的类，用来处理同一个键的多个值。这是很有必要的，因为一些 HTML 表单元素，尤其是 `<select multiple>`，会传递同一个键的多个值。
+
+### `HttpResponse` 对象
+
+#### 用法
+
+##### 传入字符串
+
+典型的用法是将页面的内容作为字符串、字节串或 [`memoryview`](https://docs.python.org/3/library/stdtypes.html#memoryview) 传递给 [`HttpResponse`](https://docs.djangoproject.com/zh-hans/6.0/ref/request-response/#django.http.HttpResponse) 构造函数：
+
+```python
+>>> from django.http import HttpResponse
+>>> response = HttpResponse("Here's the text of the web page.")
+>>> response = HttpResponse("Text only, please.", content_type="text/plain")
+>>> response = HttpResponse(b"Bytestrings are also accepted.")
+>>> response = HttpResponse(memoryview(b"Memoryview as well."))
+```
+
+但如果你想逐步添加内容，你可以将 `response` 当作类似文件的对象来使用：
+
+```python
+>>> response = HttpResponse()
+>>> response.write("<p>Here's the text of the web page.</p>")
+>>> response.write("<p>Here's another paragraph.</p>")
+```
+
+#### `JsonResponse` 对象
+
+##### 用法
+
+```python
+>>> from django.http import JsonResponse
+>>> response = JsonResponse({"foo": "bar"})
+>>> response.content
+b'{"foo": "bar"}'
+```
+
+序列化非字典对象
+
+为了序列化除了 `dict` 之外的对象，你必须将 `safe` 参数设置为 `False`：
+
+```python
+>>> response = JsonResponse([1, 2, 3], safe=False)
 ```
 

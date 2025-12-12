@@ -269,9 +269,52 @@ class Car(models.Model):
 
 一个多对多的关系。需要一个位置参数：模型相关的类，它的工作原理与 [`ForeignKey`](https://docs.djangoproject.com/zh-hans/5.2/ref/models/fields/#django.db.models.ForeignKey) 完全相同，包括 [递归](https://docs.djangoproject.com/zh-hans/5.2/ref/models/fields/#recursive-relationships) 和 [惰性](https://docs.djangoproject.com/zh-hans/5.2/ref/models/fields/#lazy-relationships) 关系。
 
+对于多对多关联关系的两个模型，可以在任何一个模型中添加 [`ManyToManyField`](https://docs.djangoproject.com/zh-hans/6.0/ref/models/fields/#django.db.models.ManyToManyField) 字段，但只能选择一个模型设置该字段，即不能同时在两模型中添加该字段。
+
+一般来讲，应该把 [`ManyToManyField`](https://docs.djangoproject.com/zh-hans/6.0/ref/models/fields/#django.db.models.ManyToManyField) 实例放到需要在表单中被编辑的对象中。
+
+[`manyToManyField`](https://docs.djangoproject.com/zh-hans/6.0/ref/models/fields/#django.db.models.ManyToManyField) 的时候使用 [`through`](https://docs.djangoproject.com/zh-hans/6.0/ref/models/fields/#django.db.models.ManyToManyField.through) 参数指定多对多关系使用哪个中间模型。
+
+```python
+from django.db import models
+
+
+class Person(models.Model):
+    name = models.CharField(max_length=128)
+
+    def __str__(self):
+        return self.name
+
+
+class Group(models.Model):
+    name = models.CharField(max_length=128)
+    members = models.ManyToManyField(Person, through="Membership")
+
+    def __str__(self):
+        return self.name
+
+
+class Membership(models.Model):
+    person = models.ForeignKey(Person, on_delete=models.CASCADE)
+    group = models.ForeignKey(Group, on_delete=models.CASCADE)
+    date_joined = models.DateField()
+    invite_reason = models.CharField(max_length=64)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["person", "group"], name="unique_person_group"
+            )
+        ]
+```
+
+- class Meta是模型的元数据容器，用于定义与数据库结构、查询行为、权限控制等相关的非字段属性。在用户代码中，Membership模型通过 Meta定义了唯一约束：**作用**：禁止 `person`和 `group`的重复组合（即一个人不能多次加入同一组）
+
+- `__str__`是 Python 的魔术方法，用于定义对象的人类可读字符串表示。**调试与日志**：打印对象时显示有意义的信息。
+
 ###### `OneToOneField`
 
-一对一的关系。
+一对一的关系。例如，当你要建立一个有关“位置”信息的数据库时，你可能会包含通常的地址，电话等字段。接着，如果你想接着建立一个关于关于餐厅的数据库，除了将位置数据库当中的字段复制到 `Restaurant` 模型，你也可以将一个指向 `Place` [`OneToOneField`](https://docs.djangoproject.com/zh-hans/6.0/ref/models/fields/#django.db.models.OneToOneField) 放到 `Restaurant` 当中（因为餐厅“是一个”地点）；事实上，在处理这样的情况时最好使用 [模型继承](https://docs.djangoproject.com/zh-hans/6.0/topics/db/models/#model-inheritance) ，它隐含的包括了一个一对一关系。
 
 #### 字段选项
 
@@ -377,9 +420,71 @@ class Ox(models.Model):
 
 ## 数据库操作
 
+#### 定义模型
+
+```python
+from datetime import date
+
+from django.db import models
+
+
+class Blog(models.Model):
+    name = models.CharField(max_length=100)
+    tagline = models.TextField()
+
+    def __str__(self):
+        return self.name
+
+
+class Author(models.Model):
+    name = models.CharField(max_length=200)
+    email = models.EmailField()
+
+    def __str__(self):
+        return self.name
+
+
+class Entry(models.Model):
+    blog = models.ForeignKey(Blog, on_delete=models.CASCADE)
+    headline = models.CharField(max_length=255)
+    body_text = models.TextField()
+    pub_date = models.DateField()
+    mod_date = models.DateField(default=date.today)
+    authors = models.ManyToManyField(Author)
+    number_of_comments = models.IntegerField(default=0)
+    number_of_pingbacks = models.IntegerField(default=0)
+    rating = models.IntegerField(default=5)
+
+    def __str__(self):
+        return self.headline
+```
+
 一旦创建 [数据模型](https://docs.djangoproject.com/zh-hans/5.2/topics/db/models/) 后，Django 自动给予你一套数据库抽象 API，允许你创建，检索，更新和删除对象。
 
+#### 创建对象[¶](https://docs.djangoproject.com/zh-hans/6.0/topics/db/queries/#creating-objects)
+
+要创建一个对象，用关键字参数初始化它，然后调用 [`save()`](https://docs.djangoproject.com/zh-hans/6.0/ref/models/instances/#django.db.models.Model.save) 将其存入数据库。
+
+```python
+>>> from blog.models import Blog
+>>> b = Blog(name="Beatles Blog", tagline="All the latest Beatles news.")
+>>> b.save()
+```
+
+这在幕后执行了 `INSERT` SQL 语句。Django 在你显式调用 [`save()`](https://docs.djangoproject.com/zh-hans/6.0/ref/models/instances/#django.db.models.Model.save) 才操作数据库。
+
 #### 将修改保存至对象
+
+```python
+>>> b5.name = "New name"
+>>> b5.save()
+```
+
+要将修改保存至数据库中已有的某个对象，使用 [`save()`](https://docs.djangoproject.com/zh-hans/6.0/ref/models/instances/#django.db.models.Model.save)。
+
+#### 保存 `ForeignKey` 和 `ManyToManyField` 字段
+
+更新 [`ForeignKey`](https://docs.djangoproject.com/zh-hans/6.0/ref/models/fields/#django.db.models.ForeignKey) 字段的方法与保存普通字段完全相同——将正确类型的对象分配给相应的字段。这个示例更新了 `Entry` 实例 `entry` 的 `blog` 属性，假设已经保存了适当的 `Entry` 和 `Blog` 实例到数据库中（因此我们可以在下面检索到它们）：
 
 ```python
 >>> from blog.models import Blog, Entry
@@ -490,6 +595,8 @@ Entry.objects.all().filter(pub_date__year=2006)
 >>> q3 = q1.filter(pub_date__gte=datetime.date.today())
 ```
 
+这三个查询集是独立的。第一个是基础查询集，包含所有标题以"What"开头的条目。第二个是第一个的子集，附加了排除发布日期为今天或未来的记录的条件。第三个也是第一个的子集，附加了只选择发布日期为今天或未来的记录的条件。初始查询集（q1）不受细化过程的影响。
+
 ##### `QuerySet` 是惰性的[¶](https://docs.djangoproject.com/zh-hans/5.2/topics/db/queries/#querysets-are-lazy)
 
 QuerySet对象是惰性的——创建QuerySet并不会立即执行任何数据库操作。你可以整天叠加各种过滤器，但Django实际上要等到QuerySet被求值时才会运行查询。看看这个例子
@@ -531,6 +638,16 @@ QuerySet对象是惰性的——创建QuerySet并不会立即执行任何数据�
 
 ```python
 >>> Entry.objects.all()[5:10]
+```
+
+###### 排序
+
+由于对 queryset 切片工作方式的模糊性，禁止对其进行进一步的排序或过滤。
+
+要检索 *单个* 对象而不是列表（例如，`SELECT foo FROM bar LIMIT 1`），请使用索引而不是切片。例如，这会按标题的字母顺序返回数据库中的第一个 `Entry`：
+
+```python
+>>> Entry.objects.order_by("headline")[0]
 ```
 
 ###### 字段查询
@@ -593,6 +710,296 @@ SELECT * FROM blog_entry WHERE pub_date <= '2006-01-01';
 - [`startswith`](https://docs.djangoproject.com/zh-hans/5.2/ref/models/querysets/#std-fieldlookup-startswith), [`endswith`](https://docs.djangoproject.com/zh-hans/5.2/ref/models/querysets/#std-fieldlookup-endswith)
 
   以……开头和以……结尾的查找。当然也有大小写不敏感的版本，名为 [`istartswith`](https://docs.djangoproject.com/zh-hans/5.2/ref/models/querysets/#std-fieldlookup-istartswith) 和 [`iendswith`](https://docs.djangoproject.com/zh-hans/5.2/ref/models/querysets/#std-fieldlookup-iendswith)。
+
+- in
+
+  在一个给定的可迭代对象中；通常是一个列表、元组或查询集。
+
+  ```python
+  Entry.objects.filter(id__in=[1, 3, 4])
+  Entry.objects.filter(headline__in="abc")
+  ```
+
+- gt
+
+  大于
+
+  ```python
+  Entry.objects.filter(id__gt=4)
+  ```
+
+- gte
+
+  大于等于
+
+- lt
+
+  小于
+
+- lte
+
+  小于等于
+
+- range
+
+  范围测试（含）
+
+  ```python
+  import datetime
+  
+  start_date = datetime.date(2005, 1, 1)
+  end_date = datetime.date(2005, 3, 31)
+  Entry.objects.filter(pub_date__range=(start_date, end_date))
+  ```
+
+- date
+
+  对于日期时间字段，将值投射为日期。允许链接其他字段的查找。取一个日期值。
+
+  ```python
+  Entry.objects.filter(pub_date__date=datetime.date(2005, 1, 1))
+  Entry.objects.filter(pub_date__date__gt=datetime.date(2005, 1, 1))
+  ```
+
+- year
+
+  对于日期和日期时间字段，精确匹配年份。允许链接其他字段的查询。取整数年。
+
+  ```python
+  Entry.objects.filter(pub_date__year=2005)
+  Entry.objects.filter(pub_date__year__gte=2005)
+  ```
+
+- month
+
+  对于日期和日期时间字段，精确的月份匹配。允许链接其他字段的查询。取整数 1（1 月）到 12（12 月）。
+
+  ```python
+  Entry.objects.filter(pub_date__month=12)
+  Entry.objects.filter(pub_date__month__gte=6)
+  ```
+
+- day
+
+  对于日期和日期时间字段，精确匹配日期。允许链接其他字段的查询。取整数日
+
+  ```python
+  Entry.objects.filter(pub_date__day=3)
+  Entry.objects.filter(pub_date__day__gte=3)
+  ```
+
+- week
+
+  对于日期和日期时间字段，根据 [ISO-8601](https://en.wikipedia.org/wiki/ISO-8601) ，返回星期号（1-52 或 53），即星期从星期一开始，第一周包含一年的第一个星期四。
+
+  ```python
+  Entry.objects.filter(pub_date__week=52)
+  Entry.objects.filter(pub_date__week__gte=32, pub_date__week__lte=38)
+  ```
+
+- week_day
+
+  对于日期和日期时间字段，“星期几”匹配。允许链接其他字段的查询。
+
+  从 1（星期日）到 7（星期六）取一个整数值，代表一周的一天。
+
+  ```python
+  Entry.objects.filter(pub_date__week_day=2)
+  Entry.objects.filter(pub_date__week_day__gte=2)
+  ```
+
+- time
+
+  对于日期时间字段，将其值强制转换为时间。允许链式附加字段查找。取一个 [`datetime.time`](https://docs.python.org/3/library/datetime.html#datetime.time) 的值。
+
+  ```python
+  Entry.objects.filter(pub_date__time=datetime.time(14, 30))
+  Entry.objects.filter(pub_date__time__range=(datetime.time(8), datetime.time(17)))
+  ```
+
+- hour
+
+  对于日期时间和时间字段，精确的小时匹配。允许链式查找其他字段。取 0 到 23 之间的整数。
+
+  ```python
+  Event.objects.filter(timestamp__hour=23)
+  Event.objects.filter(time__hour=5)
+  Event.objects.filter(timestamp__hour__gte=12)
+  ```
+
+- minute
+
+  对于日期时间和时间字段，精确的分钟匹配。允许链式查找其他字段。取 0 到 59 之间的整数。
+
+  ```python
+  Event.objects.filter(timestamp__minute=29)
+  Event.objects.filter(time__minute=46)
+  Event.objects.filter(timestamp__minute__gte=29)
+  ```
+
+- second
+
+  对于日期时间和时间字段，完全秒配。允许链式查找其他字段。取 0 到 59 之间的整数。
+
+  ```python
+  Event.objects.filter(timestamp__second=31)
+  Event.objects.filter(time__second=2)
+  Event.objects.filter(timestamp__second__gte=31)
+  ```
+
+- isnull
+
+  取 `True` 或 `False`，分别对应 `IS NULL` 和 `IS NOT NULL` 的 SQL 查询。
+
+  ```python
+  Entry.objects.filter(pub_date__isnull=True)
+  ```
+
+- regex
+
+  区分大小写的正则表达式匹配。
+
+  正则表达式语法是使用中的数据库后端的语法。对于没有内置正则表达式支持的 SQLite 来说，这个功能是由（Python）用户定义的 REGEXP 函数提供的，因此正则表达式语法是 Python 的 `re` 模块的语法。
+
+  ```python
+  Entry.objects.get(title__regex=r"^(An?|The) +")
+  ```
+
+###### 聚合
+
+下面是根据以上模型执行常见的聚合查询：
+
+```python
+# Total number of books.
+>>> Book.objects.count()
+2452
+
+# Total number of books with publisher=BaloneyPress
+>>> Book.objects.filter(publisher__name="BaloneyPress").count()
+73
+
+# Average price across all books, provide default to be returned instead
+# of None if no books exist.
+>>> from django.db.models import Avg
+>>> Book.objects.aggregate(Avg("price", default=0))
+{'price__avg': 34.35}
+
+# Max price across all books, provide default to be returned instead of
+# None if no books exist.
+>>> from django.db.models import Max
+>>> Book.objects.aggregate(Max("price", default=0))
+{'price__max': Decimal('81.20')}
+
+# Difference between the highest priced book and the average price of all books.
+>>> from django.db.models import FloatField
+>>> Book.objects.aggregate(
+...     price_diff=Max("price", output_field=FloatField()) - Avg("price")
+... )
+{'price_diff': 46.85}
+
+# All the following queries involve traversing the Book<->Publisher
+# foreign key relationship backwards.
+
+# Each publisher, each with a count of books as a "num_books" attribute.
+>>> from django.db.models import Count
+>>> pubs = Publisher.objects.annotate(num_books=Count("book"))
+>>> pubs
+<QuerySet [<Publisher: BaloneyPress>, <Publisher: SalamiPress>, ...]>
+>>> pubs[0].num_books
+73
+
+# Each publisher, with a separate count of books with a rating above and below 5
+>>> from django.db.models import Q
+>>> above_5 = Count("book", filter=Q(book__rating__gt=5))
+>>> below_5 = Count("book", filter=Q(book__rating__lte=5))
+>>> pubs = Publisher.objects.annotate(below_5=below_5).annotate(above_5=above_5)
+>>> pubs[0].above_5
+23
+>>> pubs[0].below_5
+12
+
+# The top 5 publishers, in order by number of books.
+>>> pubs = Publisher.objects.annotate(num_books=Count("book")).order_by("-num_books")[:5]
+>>> pubs[0].num_books
+1323
+```
+
+###### 在 `QuerySet` 上生成聚合[¶](https://docs.djangoproject.com/zh-hans/6.0/topics/db/aggregation/#generating-aggregates-over-a-queryset)
+
+Django 提供两种生成聚合值的方法。第一种方法是在整个 `QuerySet` 上生成摘要值。例如，假设您想计算所有可售书籍的平均价格。Django 的查询语法提供了一种描述所有书籍集合的方法
+
+```python
+>>> Book.objects.all()
+```
+
+我们需要的是一种方法来计算属于这个 `QuerySet` 的对象的摘要值。这可以通过在 `QuerySet` 上附加一个 `aggregate()` 子句来实现
+
+```python
+>>> from django.db.models import Avg
+>>> Book.objects.all().aggregate(Avg("price"))
+{'price__avg': 34.35}
+
+```
+
+在这个示例中，`all()` 是多余的，所以可以简化为：
+
+```python
+>>> Book.objects.aggregate(Avg("price"))
+{'price__avg': 34.35}
+```
+
+传递给 `aggregate()` 的参数描述了我们想要计算的聚合值。在这个例子里，要计算的就是 `Book` 模型上的 `price` 字段的平均值。可用的聚合函数列表可以在 [QuerySet reference](https://docs.djangoproject.com/zh-hans/6.0/ref/models/querysets/#aggregation-functions) 中找到。
+
+`aggregate()` 是一个 `QuerySet` 的终端子句，当调用时，它返回一个名值对的字典。名称是聚合值的标识符；值是计算得到的聚合值。名称是从字段名称和聚合函数自动生成的。如果您想手动指定聚合值的名称，可以在指定聚合子句时提供该名称：
+
+````python
+>>> Book.objects.aggregate(average_price=Avg("price"))
+{'average_price': 34.35}
+````
+
+如果您想生成多个聚合值，可以向 `aggregate()` 子句添加另一个参数。因此，如果我们还想知道所有书的最高价和最低价，可以发出以下查询：
+
+```python
+>>> from django.db.models import Avg, Max, Min
+>>> Book.objects.aggregate(Avg("price"), Max("price"), Min("price"))
+{'price__avg': 34.35, 'price__max': Decimal('81.20'), 'price__min': Decimal('12.99')}
+```
+
+###### 为 `QuerySet` 中的每一个条目生成聚合
+
+生成值的汇总的另一个办法是为 [`QuerySet`](https://docs.djangoproject.com/zh-hans/6.0/ref/models/querysets/#django.db.models.query.QuerySet) 的每一个对象生成独立汇总。比如，如果你想检索书籍列表，你可能想知道每一本书有多少作者。每一本书与作者有多对多的关系；我们想在 `QuerySet` 中为每一本书总结这个关系。
+
+使用 [`annotate()`](https://docs.djangoproject.com/zh-hans/6.0/ref/models/querysets/#django.db.models.query.QuerySet.annotate) 子句可以生成每一个对象的汇总。当指定 `annotate()` 子句，`QuerySet` 中的每一个对象将对指定值进行汇总。
+
+这些汇总语法规则与 [`aggregate()`](https://docs.djangoproject.com/zh-hans/6.0/ref/models/querysets/#django.db.models.query.QuerySet.aggregate) 子句的规则相同。`annotate()` 的每一个参数描述了一个要计算的聚合。比如，注解（annotate）所有书的所有作者：
+
+```python
+# Build an annotated queryset
+>>> from django.db.models import Count
+>>> q = Book.objects.annotate(Count("authors"))
+# Interrogate the first object in the queryset
+>>> q[0]
+<Book: The Definitive Guide to Django>
+>>> q[0].authors__count
+2
+# Interrogate the second object in the queryset
+>>> q[1]
+<Book: Practical Django Projects>
+>>> q[1].authors__count
+1
+```
+
+与 `aggregate()` 一样，注释的名称是从聚合函数的名称和被聚合字段的名称自动派生的。您可以通过在指定注释时提供别名来覆盖这个默认名称：
+
+```python
+>>> q = Book.objects.annotate(num_authors=Count("authors"))
+>>> q[0].num_authors
+2
+>>> q[1].num_authors
+1
+```
+
+
 
 ##### 跨关系查询[¶](https://docs.djangoproject.com/zh-hans/5.2/topics/db/queries/#lookups-that-span-relationships)
 

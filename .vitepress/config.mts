@@ -82,8 +82,8 @@ export default defineConfig({
             link: "/immer",
           },
           {
-            text: "numpy",
-            link: "/numpy",
+            text: "numpy+pandas",
+            link: "/numpy+pandas",
           },
           {
             text:"zustand",

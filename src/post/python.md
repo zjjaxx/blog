@@ -946,6 +946,129 @@ download('MySQL从删库到跑路.avi')
 upload('Python从入门到住院.pdf')
 ```
 
+## 内置模块
+
+### datetime
+
+ 基本日期和时间类型
+
+- *class* datetime.**date**
+
+  一个理想化的简单型日期，它假设当今的公历在过去和未来永远有效。 属性: [`year`](https://docs.python.org/zh-cn/3.14/library/datetime.html#datetime.date.year), [`month`](https://docs.python.org/zh-cn/3.14/library/datetime.html#datetime.date.month), and [`day`](https://docs.python.org/zh-cn/3.14/library/datetime.html#datetime.date.day)。
+
+  计算距离特定事件天数的例子:
+
+  ```python
+  import time
+  from datetime import date
+  today = date.today()
+  today
+  
+  today == date.fromtimestamp(time.time())
+  
+  my_birthday = date(today.year, 6, 24)
+  if my_birthday < today:
+      my_birthday = my_birthday.replace(year=today.year + 1)
+  
+  my_birthday
+  
+  time_to_birthday = abs(my_birthday - today)
+  time_to_birthday.days
+  ```
+
+  - *classmethod* date.**today**()
+
+    返回当前的本地日期。这等价于 `date.fromtimestamp(time.time())`。
+
+  - *classmethod* date.**fromisoformat**(*date_string*)
+
+    返回一个对应于以任何有效 ISO 8601 格式给出的 *date_string* 的 [`date`](https://docs.python.org/zh-cn/3.14/library/datetime.html#datetime.date)，下列格式除外：
+
+    ```python
+    from datetime import date
+    date.fromisoformat('2019-12-04')
+    
+    date.fromisoformat('20191204')
+    
+    date.fromisoformat('2021-W01-1')
+    ```
+
+  - date.**replace**(*year=self.year*, *month=self.month*, *day=self.day*)
+
+    返回一个具有同样的值，但更新了指定形参的新的 [`date`](https://docs.python.org/zh-cn/3.14/library/datetime.html#datetime.date) 对象。
+
+    ```python
+    from datetime import date
+    d = date(2002, 12, 31)
+    d.replace(day=26)
+    ```
+
+  - date.**isoformat**()
+
+    返回一个以 ISO 8601 格式 `YYYY-MM-DD` 来表示日期的字符串:
+
+    ```python
+    from datetime import date
+    date(2002, 12, 4).isoformat()
+    ```
+
+
+
+- *class* datetime.**time**
+
+  一个独立于任何特定日期的理想化时间，它假设每一天都恰好等于 24*60*60 秒。 （这里没有“闰秒”的概念。） 包含属性: [`hour`](https://docs.python.org/zh-cn/3.14/library/datetime.html#datetime.time.hour), [`minute`](https://docs.python.org/zh-cn/3.14/library/datetime.html#datetime.time.minute), [`second`](https://docs.python.org/zh-cn/3.14/library/datetime.html#datetime.time.second), [`microsecond`](https://docs.python.org/zh-cn/3.14/library/datetime.html#datetime.time.microsecond) 和 [`tzinfo`](https://docs.python.org/zh-cn/3.14/library/datetime.html#datetime.time.tzinfo)。
+
+- *class* datetime.**datetime**
+
+  日期和时间的结合。属性：[`year`](https://docs.python.org/zh-cn/3.14/library/datetime.html#datetime.datetime.year), [`month`](https://docs.python.org/zh-cn/3.14/library/datetime.html#datetime.datetime.month), [`day`](https://docs.python.org/zh-cn/3.14/library/datetime.html#datetime.datetime.day), [`hour`](https://docs.python.org/zh-cn/3.14/library/datetime.html#datetime.datetime.hour), [`minute`](https://docs.python.org/zh-cn/3.14/library/datetime.html#datetime.datetime.minute), [`second`](https://docs.python.org/zh-cn/3.14/library/datetime.html#datetime.datetime.second), [`microsecond`](https://docs.python.org/zh-cn/3.14/library/datetime.html#datetime.datetime.microsecond), and [`tzinfo`](https://docs.python.org/zh-cn/3.14/library/datetime.html#datetime.datetime.tzinfo).
+
+  - *classmethod* datetime.**today**()[¶](https://docs.python.org/zh-cn/3.14/library/datetime.html#datetime.datetime.today)
+
+    返回表示当前地方时的 date 和 time，其中 [`tzinfo`](https://docs.python.org/zh-cn/3.14/library/datetime.html#datetime.datetime.tzinfo) 为 `None`。等价于:
+
+    ```python
+    datetime.fromtimestamp(time.time())
+    ```
+
+  - *classmethod* datetime.**now**(*tz=None*)
+
+    返回表示当前地方时的 date 和 time 对象。如果可选参数 *tz* 为 `None` 或未指定，这就类似于 [`today()`](https://docs.python.org/zh-cn/3.14/library/datetime.html#datetime.datetime.today)，更精确和适用于跨时区操作
+
+  - *classmethod* datetime.**combine**(*date*, *time*, *tzinfo=time.tzinfo*)
+
+    返回一个新的 [`datetime`](https://docs.python.org/zh-cn/3.14/library/datetime.html#datetime.datetime) 对象，其日期部分等于给定的 [`date`](https://docs.python.org/zh-cn/3.14/library/datetime.html#datetime.date) 对象的值，而其时间部分等于给定的 [`time`](https://docs.python.org/zh-cn/3.14/library/datetime.html#datetime.time) 对象的值。 如果提供了 *tzinfo* 参数，其值会被用来设置结果的 [`tzinfo`](https://docs.python.org/zh-cn/3.14/library/datetime.html#datetime.datetime.tzinfo) 属性，否则将使用 *time* 参数的 [`tzinfo`](https://docs.python.org/zh-cn/3.14/library/datetime.html#datetime.time.tzinfo) 属性。 如果 *date* 参数是一个 [`datetime`](https://docs.python.org/zh-cn/3.14/library/datetime.html#datetime.datetime) 对象，则其时间部分和 [`tzinfo`](https://docs.python.org/zh-cn/3.14/library/datetime.html#datetime.datetime.tzinfo) 属性将被忽略。对于任意 [`datetime`](https://docs.python.org/zh-cn/3.14/library/datetime.html#datetime.datetime) 对象 `d`，`d == datetime.combine(d.date(), d.time(), d.tzinfo)`。
+
+- *class* datetime.**timedelta**
+
+  将两个 [`datetime`](https://docs.python.org/zh-cn/3.14/library/datetime.html#datetime.datetime) 或 [`date`](https://docs.python.org/zh-cn/3.14/library/datetime.html#datetime.date) 实例之间的差值表示为微秒级精度的持续时间。
+
+  ```python
+  from datetime import timedelta,date
+  def print_hi(name):
+      begain=date(year=2021, month=1, day=1)
+      delta = timedelta(
+          days=50,
+          seconds=27,
+          microseconds=10,
+          milliseconds=29000,
+          minutes=5,
+          hours=8,
+          weeks=2
+      )
+      end=begain+delta
+      print(end)
+  ```
+
+  
+
+- *class* datetime.**tzinfo**
+
+  一个描述时区信息对象的抽象基类。 用来给 [`datetime`](https://docs.python.org/zh-cn/3.14/library/datetime.html#datetime.datetime) 和 [`time`](https://docs.python.org/zh-cn/3.14/library/datetime.html#datetime.time) 类提供自定义的时间调整概念（例如处理时区和/或夏令时）。
+
+- *class* datetime.**timezone**
+
+  一个实现了 [`tzinfo`](https://docs.python.org/zh-cn/3.14/library/datetime.html#datetime.tzinfo) 抽象基类的子类，用于表示相对于 世界标准时间（UTC）的偏移量。
+
 ## 面向对象编程
 
 ### 定义类

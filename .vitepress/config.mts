@@ -102,6 +102,10 @@ export default defineConfig({
       {
         text: "开源",
         items: [
+          {
+            text:"Authorclaw",
+            link:"/Authorclaw",
+          },
           { text: "预渲染插件", link: "/预渲染插件" },
           { text: "性能指标可视化插件", link: "/性能指标可视化插件" },
           { text: "组件库", link: "/组件库" },

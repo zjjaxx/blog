@@ -377,3 +377,112 @@ df
 df.set_index('time',inplace=True)
 ```
 
+#### 其他方法
+
+::: tip
+
+在分析的过程中如果产生了boolean值则下一步马上将布尔值作为源数据的行索引
+
+```python
+df.loc[(df['open'] - df['close']) / df['open'] > 0.03] #获取了True对应的行数据（满足需求的行数据）
+df.loc[(df['open'] - df['close']) / df['open'] > 0.03].index #df的行数据
+```
+
+原理是如果布尔值作为df的行索引，则可以取出true对应的行数据，忽略false对应的行数据
+
+:::
+
+- drop 删除
+
+- info 查看数据类型
+
+- shift 正数向下移动，负数向上移动
+
+  ```python
+  #将布尔值作为源数据的行索引取出True对应的行数据
+  df.loc[(df['open'] - df['close'].shift(1))/df['close'].shift(1) < -0.02]
+  df.loc[(df['open'] - df['close'].shift(1))/df['close'].shift(1) < -0.02].index
+  ```
+
+- resample 数据的重新取样
+
+  ```python
+  #买股票：找每个月的第一个交易日对应的行数据（捕获到开盘价）==》每月的第一行数据
+  #根据月份从原始数据中提取指定的数据
+  #每月第一个交易日对应的行数据
+  df_monthly = new_df.resample('M').first()#数据的重新取样
+  df_monthly
+  #买入股票花费的总金额
+  cost = df_monthly['open'].sum()*100
+  cost
+  #卖出股票到手的钱
+  #特殊情况：2020年买入的股票卖不出去
+  new_df.resample('A').last()
+  #将2020年最后一行切出去
+  df_yearly = new_df.resample('A').last()[:-1]
+  df_yearly
+  #卖出股票到手的钱
+  resv = df_yearly['open'].sum()*1200
+  resv
+  #最后手中剩余的股票需要估量其价值计算到总收益中
+  #使用昨天的收盘价作为剩余股票的单价
+  last_monry = 200*new_df['close'][-1]
+  ```
+
+
+- rolling
+
+  rolling方法是处理时间序列或顺序数据时进行滑动窗口计算的核心工具。它通过定义固定长度或时间窗口，对窗口内的数据执行统计计算（如均值、标准差等），广泛应用于数据平滑、趋势分析和特征工程。
+
+  ```python
+  ma5 = df['close'].rolling(5).mean()
+  ma30 = df['close'].rolling(30).mean()
+  ```
+
+- & 操作符
+
+  ```python
+  s1 = ma5 < ma30
+  s2 = ma5 > ma30
+  death_ex = s1 & s2.shift(1) #判定死叉的条件 ma5<ma30 并且 前一个 ma5>ma30 
+  df.loc[death_ex] #死叉对应的行数据
+  death_date = df.loc[death_ex].index
+  ```
+
+- sort_index
+
+  排序
+
+- agg
+
+```python
+# 数据的重新取样，按每周五取数据
+# 按列指定不同函数
+# agg 是对分组/重采样后的每个时间段按列应用不同聚合函数。这里是把日 K 线按周五分组，然后对每一列用不同规则汇总成周 K。具体：开盘取该周第一天、最高取该周最高、最低取该周最低、收盘取该周最后一天、成交量求和。
+weekly = df.resample('W-FRI').agg({
+    'open': 'first',
+    'high': 'max',
+    'low': 'min',
+    'close': 'last',
+    'volume': 'sum'
+}).dropna()
+```
+
+
+
+### 处理丢失数据
+
+有两种丢失数据：
+
+- None
+- np.nan(NaN)
+
+::: tip
+
+为什么在数据分析中需要用到的是浮点类型的空而不是对象类型？
+
+- 数据分析中会常常使用某些形式的运算来处理原始数据，如果原数数据中的空值为NAN的形式，则不会干扰或者中断运算。
+- NAN可以参与运算的
+- None是不可以参与运算
+
+:::

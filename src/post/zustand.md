@@ -503,3 +503,328 @@ type State = {
 
 ```
 
+## 不可变状态和合并
+
+与 React 类似`useState`，我们需要以不可变的方式更新状态。
+
+以下是一个典型的例子：
+
+```tsx
+import { create } from 'zustand'
+
+const useCountStore = create((set) => ({
+  count: 0,
+  inc: () => set((state) => ({ count: state.count + 1 })),
+}))
+
+```
+
+该`set`函数用于更新 store 中的状态。由于状态是不可变的，因此应该这样写：
+
+```tsx
+set((state) => ({ ...state, count: state.count + 1 }))
+```
+
+然而，由于这是一种常见模式，`set`实际上合并了状态，我们可以跳过这`...state`部分：
+
+```tsx
+set((state) => ({ count: state.count + 1 }))
+```
+
+### [替换标志](https://zustand.docs.pmnd.rs/guides/immutable-state-and-merging#replace-flag)
+
+要禁用合并行为，您可以指定一个`replace`布尔值，`set`如下所示：
+
+```tsx
+set((state) => newState, true)
+```
+
+## typescript使用指南
+
+### [在组件中使用 Store](https://zustand.docs.pmnd.rs/guides/beginner-typescript#using-the-store-in-components)
+
+在组件内部，你可以读取状态并调用操作。选择器`(s) => s.bears`只会订阅你需要的内容。这可以减少重新渲染并提高性能。JavaScript 也能做到这一点，但使用 TypeScript 时，你的 IDE 会自动补全状态字段。
+
+```tsx
+import { useBearStore } from './store'
+
+function BearCounter() {
+  // Select only 'bears' to avoid unnecessary re-renders
+  const bears = useBearStore((s) => s.bears)
+  return <h1>{bears} bears around</h1>
+}
+```
+
+### [重置商店](https://zustand.docs.pmnd.rs/guides/beginner-typescript#resetting-the-store)
+
+ 注销或“清除会话”后重置属性类型很有用。我们使用它`typeof initialState`来避免重复定义属性类型。TypeScript 会在`initialState`属性类型更改时自动更新。与 JavaScript 相比，这更安全、更简洁。
+
+```tsx
+import { create } from 'zustand'
+
+const initialState = { bears: 0, food: 'honey' }
+
+// Reuse state type dynamically
+type BearState = typeof initialState & {
+  increase: (by: number) => void
+  reset: () => void
+}
+
+const useBearStore = create<BearState>()((set) => ({
+  ...initialState,
+  increase: (by) => set((s) => ({ bears: s.bears + by })),
+  reset: () => set(initialState),
+}))
+
+function ResetZoo() {
+  const { bears, increase, reset } = useBearStore()
+
+  return (
+    <div>
+      <div>{bears}</div>
+      <button onClick={() => increase(5)}>Increase by 5</button>
+      <button onClick={reset}>Reset</button>
+    </div>
+  )
+}
+
+```
+
+### [提取类型](https://zustand.docs.pmnd.rs/guides/beginner-typescript#extracting-types)
+
+Zustand 提供了一个名为 `StoreType` 的内置辅助函数`ExtractState`。这对于测试、实用函数或组件属性非常有用。它返回 store 的状态和操作的完整类型，而无需手动重新定义它们。提取 Store 类型：
+
+```tsx
+// store.ts
+import { create, type ExtractState } from 'zustand'
+
+export const useBearStore = create((set) => ({
+  bears: 3,
+  food: 'honey',
+  increase: (by: number) => set((s) => ({ bears: s.bears + by })),
+}))
+
+// Extract the type of the whole store state
+export type BearState = ExtractState<typeof useBearStore>
+
+```
+
+在实用函数中：
+
+```ts
+// util.ts
+import { BearState } from './store.ts'
+
+function logBearState(state: BearState) {
+  console.log(`We have ${state.bears} bears eating ${state.food}`)
+}
+
+logBearState(useBearStore.getState())
+```
+
+### [多重选择器](https://zustand.docs.pmnd.rs/guides/beginner-typescript#multiple-selectors)
+
+有时你需要访问多个属性。从选择器返回一个对象可以让你一次访问多个字段。但是，直接从该对象中解构属性可能会导致不必要的重新渲染。为了避免这种情况，建议使用 `@getScreen` 包裹选择器`useShallow`，这样可以防止在选定值保持浅相等时重新渲染。这比订阅整个 store 更高效。TypeScript 确保你不会意外地拼写错误 `@getScreen``bears`或 `@ getScreen` `food`。有关 `@getScreen` 的更多详细信息，请参阅[API 文档](https://zustand.docs.pmnd.rs/hooks/use-shallow)`useShallow`。
+
+```ts
+import { create } from 'zustand'
+import { useShallow } from 'zustand/react/shallow'
+
+// Bear store with explicit types
+interface BearState {
+  bears: number
+  food: number
+}
+
+const useBearStore = create<BearState>()(() => ({
+  bears: 2,
+  food: 10,
+}))
+
+// In components, you can use both stores safely
+function MultipleSelectors() {
+  const { bears, food } = useBearStore(
+    useShallow((state) => ({ bears: state.bears, food: state.food })),
+  )
+
+  return (
+    <div>
+      We have {food} units of food for {bears} bears
+    </div>
+  )
+}
+
+```
+
+### [带有选择器的派生状态](https://zustand.docs.pmnd.rs/guides/beginner-typescript#derived-state-with-selectors)
+
+并非所有值都需要直接存储——有些值可以根据现有状态计算得出。您可以使用选择器来派生值。这可以避免重复存储，并保持数据存储的精简。TypeScript 确保 ` `bears`is` 是一个数字，因此运算是安全的。
+
+```tsx
+import { create } from 'zustand'
+
+interface BearState {
+  bears: number
+  foodPerBear: number
+}
+
+const useBearStore = create<BearState>()(() => ({
+  bears: 3,
+  foodPerBear: 2,
+}))
+
+function TotalFood() {
+  // Derived value: required amount food for all bears
+  const totalFood = useBearStore((s) => s.bears * s.foodPerBear) // don't need to have extra property `{ totalFood: 6 }` in your Store
+
+  return <div>We need ${totalFood} jars of honey</div>
+}
+
+```
+
+### [中间件](https://zustand.docs.pmnd.rs/guides/beginner-typescript#middlewares)
+
+#### [`combine`中间件](https://zustand.docs.pmnd.rs/guides/beginner-typescript#combine-middleware)
+
+这个中间件将初始状态和操作分离，使代码更简洁。TypeScript 会自动从状态和操作中推断类型，无需额外的接口。这与 JavaScript 不同，JavaScript 缺乏类型安全机制。这种风格在 TypeScript 项目中非常流行。更多详情请参阅[API 文档。](https://zustand.docs.pmnd.rs/middlewares/combine)
+
+```tsx
+import { create } from 'zustand'
+import { combine } from 'zustand/middleware'
+
+interface BearState {
+  bears: number
+  increase: () => void
+}
+
+// State + actions are separated
+export const useBearStore = create<BearState>()(
+  combine({ bears: 0 }, (set) => ({
+    increase: () => set((s) => ({ bears: s.bears + 1 })),
+  })),
+)
+
+```
+
+#### [`devtools`中间件](https://zustand.docs.pmnd.rs/guides/beginner-typescript#devtools-middleware)
+
+这个中间件将 Zustand 连接到 Redux DevTools。您可以检查变更、回溯时间并调试状态。它在开发过程中非常有用。即使在这里，TypeScript 也能确保您的操作和状态仍然经过类型检查。更多详情请参阅[API 文档。](https://zustand.docs.pmnd.rs/middlewares/devtools)
+
+```tsx
+import { create } from 'zustand'
+import { devtools } from 'zustand/middleware'
+
+interface BearState {
+  bears: number
+  increase: () => void
+}
+
+export const useBearStore = create<BearState>()(
+  devtools((set) => ({
+    bears: 0,
+    increase: () => set((s) => ({ bears: s.bears + 1 })),
+  })),
+)
+
+```
+
+#### [`persist`中间件](https://zustand.docs.pmnd.rs/guides/beginner-typescript#persist-middleware)
+
+这个中间件会将你的数据存储在本地`localStorage`（或其他存储位置）。这意味着即使页面刷新，你的数据也不会丢失。这对于需要持久化的应用来说非常有用。在 TypeScript 中，状态类型保持一致，因此不会出现运行时意外情况。更多详情请参阅[API 文档。](https://zustand.docs.pmnd.rs/middlewares/persist)
+
+```tsx
+import { create } from 'zustand'
+import { persist } from 'zustand/middleware'
+
+interface BearState {
+  bears: number
+  increase: () => void
+}
+
+export const useBearStore = create<BearState>()(
+  persist(
+    (set) => ({
+      bears: 0,
+      increase: () => set((s) => ({ bears: s.bears + 1 })), // <-- тип явно
+    }),
+    { name: 'bear-storage' }, // localStorage key
+  ),
+)
+
+```
+
+#### [异步操作](https://zustand.docs.pmnd.rs/guides/beginner-typescript#async-actions)
+
+操作可以异步执行，以便获取远程数据。这里我们获取熊的数量并更新状态。TS 强制执行正确的 API 响应类型（`BearData`）。在 JS 中，你可能会拼写错误`count`——TS 会防止这种情况发生。
+
+```ts
+import { create } from 'zustand'
+
+interface BearData {
+  count: number
+}
+
+interface BearState {
+  bears: number
+  fetchBears: () => Promise<void>
+}
+
+export const useBearStore = create<BearState>()((set) => ({
+  bears: 0,
+  fetchBears: async () => {
+    const res = await fetch('/api/bears')
+    const data: BearData = await res.json()
+
+    set({ bears: data.count })
+  },
+}))
+
+```
+
+#### 多家门店
+
+你可以为不同的领域创建多个 store。例如，一个`BearStore`store 管理熊，另一个 store`FishStore`管理鱼。这样可以保持状态隔离，使大型应用程序更易于维护。使用 TypeScript，每个 store 都有其严格的类型——你不会意外地将熊和鱼混在一起。
+
+```ts
+import { create } from 'zustand'
+
+// Bear store with explicit types
+interface BearState {
+  bears: number
+  addBear: () => void
+}
+
+const useBearStore = create<BearState>()((set) => ({
+  bears: 2,
+  addBear: () => set((s) => ({ bears: s.bears + 1 })),
+}))
+
+// Fish store with explicit types
+interface FishState {
+  fish: number
+  addFish: () => void
+}
+
+const useFishStore = create<FishState>()((set) => ({
+  fish: 5,
+  addFish: () => set((s) => ({ fish: s.fish + 1 })),
+}))
+
+// In components, you can use both stores safely
+function Zoo() {
+  const { bears, addBear } = useBearStore()
+  const { fish, addFish } = useFishStore()
+
+  return (
+    <div>
+      <div>
+        {bears} bears and {fish} fish
+      </div>
+      <button onClick={addBear}>Add bear</button>
+      <button onClick={addFish}>Add fish</button>
+    </div>
+  )
+}
+
+```
+

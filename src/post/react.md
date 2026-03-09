@@ -553,6 +553,8 @@ useEffect(() => {
 
 - 在事件处理函数中共享逻辑 ，共享逻辑不应放在useEffect中，而是抽离为函数调用
 
+
+
 #### 响应式 Effect 的生命周期
 
 ::: tip
@@ -667,5 +669,286 @@ function MyInput({ ref }) {
 
   return <input ref={inputRef} />;
 };
+```
+
+## 你可能不需要 Effect
+
+- **如果一个值可以基于现有的 props 或 state 计算得出，[不要把它作为一个 state](https://zh-hans.react.dev/learn/choosing-the-state-structure#avoid-redundant-state)，而是在渲染期间直接计算这个值**。
+
+  ```tsx
+  function Form() {
+    const [firstName, setFirstName] = useState('Taylor');
+    const [lastName, setLastName] = useState('Swift');
+    // ✅ 非常好：在渲染期间进行计算
+    const fullName = firstName + ' ' + lastName;
+    // ...
+  }
+  ```
+
+  如果是比较昂贵的计算则实用useMemo
+
+  ::: tip
+
+  一般来说只有你创建或循环遍历了成千上万个对象时才会很耗费时间。
+
+  :::
+
+  ```tsx
+  import { useMemo, useState } from 'react';
+  
+  function TodoList({ todos, filter }) {
+    const [newTodo, setNewTodo] = useState('');
+    const visibleTodos = useMemo(() => {
+      // ✅ 除非 todos 或 filter 发生变化，否则不会重新执行
+      return getFilteredTodos(todos, filter);
+    }, [todos, filter]);
+    // ...
+  }
+  ```
+
+- 当 props 变化时重置所有 state 
+
+  ```tsx
+  export default function ProfilePage({ userId }) {
+    return (
+      <Profile
+        userId={userId}
+        key={userId}
+      />
+    );
+  }
+  
+  function Profile({ userId }) {
+    // ✅ 当 key 变化时，该组件内的 comment 或其他 state 会自动被重置
+    const [comment, setComment] = useState('');
+    // ...
+  }
+  ```
+
+  通常，当在相同的位置渲染相同的组件时，React 会保留状态。**通过将 `userId` 作为 `key` 传递给 `Profile` 组件，使  React 将具有不同 `userId` 的两个 `Profile` 组件视为两个不应共享任何状态的不同组件**。每当 key（这里是 `userId`）变化时，React 将重新创建 DOM，并 [重置](https://zh-hans.react.dev/learn/preserving-and-resetting-state#option-2-resetting-state-with-a-key) `Profile` 组件和它的所有子组件的 state。
+
+- 当 prop 变化时调整部分 state 
+
+  ```tsx
+  function List({ items }) {
+    const [isReverse, setIsReverse] = useState(false);
+    const [selection, setSelection] = useState(null);
+  
+    // 好一些：在渲染期间调整 state
+    const [prevItems, setPrevItems] = useState(items);
+    if (items !== prevItems) {
+      setPrevItems(items);
+      setSelection(null);
+    }
+    // ...
+  }
+  ```
+
+  上面的例子中，在渲染过程中直接调用了 `setSelection`。当它执行到 `return` 语句退出后，React 将 **立即** 重新渲染 `List`。此时 React 还没有渲染 `List` 的子组件或更新 DOM，这使得 `List` 的子组件可以跳过渲染旧的 `selection` 值。
+
+- 初始化应用 
+
+  有些逻辑只需要在应用加载时执行一次。
+
+  ```tsx
+  function App() {
+    // 🔴 避免：把只需要执行一次的逻辑放在 Effect 中
+    useEffect(() => {
+      loadDataFromLocalStorage();
+      checkAuthToken();
+    }, []);
+    // ...
+  }
+  ```
+
+  然后，你很快就会发现它在 [开发环境会执行两次](https://zh-hans.react.dev/learn/synchronizing-with-effects#how-to-handle-the-effect-firing-twice-in-development)。尽管在实际的生产环境中它可能永远不会被重新挂载，但在所有组件中遵循相同的约束条件可以更容易地移动和复用代码。如果某些逻辑必须在 **每次应用加载时执行一次**，而不是在 **每次组件挂载时执行一次**，可以添加一个顶层变量来记录它是否已经执行过了：
+
+  ```tsx
+  let didInit = false;
+  
+  function App() {
+    useEffect(() => {
+      if (!didInit) {
+        didInit = true;
+        // ✅ 只在每次应用加载时执行一次
+        loadDataFromLocalStorage();
+        checkAuthToken();
+      }
+    }, []);
+    // ...
+  }
+  ```
+
+  你也可以在模块初始化和应用渲染之前执行它：
+
+  ```tsx
+  if (typeof window !== 'undefined') { // 检测我们是否在浏览器环境
+     // ✅ 只在每次应用加载时执行一次
+    checkAuthToken();
+    loadDataFromLocalStorage();
+  }
+  
+  function App() {
+    // ...
+  }
+  ```
+
+- 订阅外部 store 
+
+  ```tsx
+  function useOnlineStatus() {
+    // 不理想：在 Effect 中手动订阅 store
+    const [isOnline, setIsOnline] = useState(true);
+    useEffect(() => {
+      function updateState() {
+        setIsOnline(navigator.onLine);
+      }
+  
+      updateState();
+  
+      window.addEventListener('online', updateState);
+      window.addEventListener('offline', updateState);
+      return () => {
+        window.removeEventListener('online', updateState);
+        window.removeEventListener('offline', updateState);
+      };
+    }, []);
+    return isOnline;
+  }
+  
+  function ChatIndicator() {
+    const isOnline = useOnlineStatus();
+    // ...
+  }
+  ```
+
+  尽管通常可以使用 Effect 来实现此功能，但 React 为此针对性地提供了一个 Hook 用于订阅外部 store。删除 Effect 并将其替换为调用 [`useSyncExternalStore`](https://zh-hans.react.dev/reference/react/useSyncExternalStore)：
+
+  ```tsx
+  function subscribe(callback) {
+    window.addEventListener('online', callback);
+    window.addEventListener('offline', callback);
+    return () => {
+      window.removeEventListener('online', callback);
+      window.removeEventListener('offline', callback);
+    };
+  }
+  
+  function useOnlineStatus() {
+    // ✅ 非常好：用内置的 Hook 订阅外部 store
+    return useSyncExternalStore(
+      subscribe, // 只要传递的是同一个函数，React 不会重新订阅
+      () => navigator.onLine, // 如何在客户端获取值
+      () => true // 如何在服务端获取值
+    );
+  }
+  
+  function ChatIndicator() {
+    const isOnline = useOnlineStatus();
+    // ...
+  }
+  ```
+
+  与手动使用 Effect 将可变数据同步到 React state 相比，这种方法能减少错误。通常，你可以写一个像上面的 `useOnlineStatus()` 这样的自定义 Hook，这样你就不需要在各个组件中重复写这些代码。
+
+## 从 Effect 中提取非响应式逻辑 
+
+例如，假设你想在用户连接到聊天室时展示一个通知。并且通过从 props 中读取当前 theme（dark 或者 light）来展示对应颜色的通知：
+
+```tsx
+function ChatRoom({ roomId, theme }) {
+  useEffect(() => {
+    const connection = createConnection(serverUrl, roomId);
+    connection.on('connected', () => {
+      showNotification('Connected!', theme);
+    });
+    connection.connect();
+    return () => {
+      connection.disconnect()
+    };
+  }, [roomId, theme]); // ✅ 声明所有依赖项
+```
+
+但是 `theme` 是一个响应式值（它会由于重新渲染而变化），并且 [Effect 读取的每一个响应式值都必须在其依赖项中声明](https://zh-hans.react.dev/learn/lifecycle-of-reactive-effects#react-verifies-that-you-specified-every-reactive-value-as-a-dependency)。现在你必须把 `theme` 作为 Effect 的依赖项之一：
+
+使用 [`useEffectEvent`](https://zh-hans.react.dev/reference/react/useEffectEvent) 这个特殊的 Hook 从 Effect 中提取非响应式逻辑：
+
+```tsx
+function ChatRoom({ roomId, theme }) {
+  const onConnected = useEffectEvent(() => {
+    showNotification('Connected!', theme);
+  });
+
+  useEffect(() => {
+    const connection = createConnection(serverUrl, roomId);
+    connection.on('connected', () => {
+      onConnected();
+    });
+    connection.connect();
+    return () => connection.disconnect();
+  }, [roomId]); // ✅ 声明所有依赖项
+```
+
+
+
+## ref
+
+当您希望组合“记住”某些信息，但又不想让这些信息[触发新的渲染](https://zh-hans.react.dev/learn/render-and-commit)时，您可以使用**ref**。
+
+你可以[像其他 prop 一样](https://zh-hans.react.dev/learn/passing-props-to-a-component)将 ref 从父组件传递给子组件。
+
+```tsx
+import { useRef } from 'react';
+
+function MyInput({ ref }) {
+  return <input ref={ref} />;
+}
+
+function MyForm() {
+  const inputRef = useRef(null);
+  return <MyInput ref={inputRef} />
+}
+```
+
+```tsx
+import { useRef, useImperativeHandle } from "react";
+
+function MyInput({ ref }) {
+  const realInputRef = useRef(null);
+  useImperativeHandle(ref, () => ({
+    // 只暴露 focus，没有别的
+    focus() {
+      realInputRef.current.focus();
+    },
+  }));
+  return <input ref={realInputRef} />;
+};
+
+export default function Form() {
+  const inputRef = useRef(null);
+
+  function handleClick() {
+    inputRef.current.focus();
+  }
+
+  return (
+    <>
+      <MyInput ref={inputRef} />
+      <button onClick={handleClick}>聚焦输入框</button>
+    </>
+  );
+}
+
+```
+
+## flushSync
+
+你可以强制React同步更新（“刷新”）DOM。为此，从`react-dom`导入放置`flushSync`状态**更新包裹**到`flushSync`调用中：
+
+```tsx
+flushSync(() => {
+  setTodos([ ...todos, newTodo]);
+});
+listRef.current.lastChild.scrollIntoView();
 ```
 

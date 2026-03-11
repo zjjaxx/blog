@@ -1383,6 +1383,8 @@ getTemplates(): Array<{ type: ProjectType; label: string; description: string; s
   }));
 }
 ```
+
+
 ### createProject
 ```ts
   createProject(
@@ -1429,21 +1431,22 @@ getTemplates(): Array<{ type: ProjectType; label: string; description: string; s
     if (this.authorOS) {
       steps = this.enhanceWithAuthorOS(steps);
     }
-
+    // 初始化项目
     const project: Project = {
-      id,
-      type,
-      title,
-      description,
-      status: 'pending',
-      progress: 0,
-      steps,
+      id, // 项目ID
+      type, // 模版类型
+      title, // 项目标题
+      description, // 项目描述
+      status: 'pending', // 状态
+      progress: 0, // 进度
+      steps, // 步骤
       createdAt: now,
       updatedAt: now,
       context: context || {},
     };
 
-    this.projects.set(id, project);
+    this.projects.set(id, project); // 收集项目到projects map
+    // 持久化
     this.persistState();
     return project;
   }
@@ -1464,6 +1467,38 @@ getTemplates(): Array<{ type: ProjectType; label: string; description: string; s
   }
 
 ```
+### persistState
+```ts
+ private persistState(): void {
+    if (this.saveDebounceTimer) clearTimeout(this.saveDebounceTimer);
+    this.saveDebounceTimer = setTimeout(async () => {
+      try {
+        const { mkdir } = await import('fs/promises');
+        const { dirname } = await import('path');
+        // 确保 projects-state.json 路径存在
+        await mkdir(dirname(this.stateFilePath), { recursive: true });
+        const state = {
+          nextId: this.nextId,
+          projects: Array.from(this.projects.values()).map(p => ({
+            ...p,
+            // Strip large step results to save space — they're already saved as individual files
+            // 去除大型步骤结果以节省空间——它们已作为单独文件保存
+            steps: p.steps.map(s => ({
+              ...s,
+              result: s.result ? s.result.substring(0, 500) + (s.result.length > 500 ? '\n\n[... truncated for state file — full output in project files ...]' : '') : undefined,
+            })),
+          })),
+        };
+        const { writeFile: wf } = await import('fs/promises');
+        // 保存 projects-state.json
+        await wf(this.stateFilePath, JSON.stringify(state, null, 2), 'utf-8');
+      } catch (err) {
+        console.error('  ⚠ Failed to persist project state:', err);
+      }
+    }, 1000);
+  }
+```
+
 ## HeartbeatService
 ### constructor 构造函数
 ```ts

@@ -103,8 +103,8 @@ export default defineConfig({
         text: "开源",
         items: [
           {
-            text:"Authorclaw",
-            link:"/Authorclaw",
+            text:"AuthorClaw",
+            link:"/AuthorClaw",
           },
           { text: "预渲染插件", link: "/预渲染插件" },
           { text: "性能指标可视化插件", link: "/性能指标可视化插件" },

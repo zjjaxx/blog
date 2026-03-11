@@ -1376,6 +1376,122 @@ getTemplates(): Array<{ type: ProjectType; label: string; description: string; s
   }));
 }
 ```
+<<<<<<< Updated upstream
+=======
+### createProject
+```ts
+  createProject(
+    type: ProjectType,
+    title: string,
+    description: string,
+    context?: Record<string, any>
+  ): Project {
+    // 项目ID nextId递增
+    const id = `project-${this.nextId++}`;
+    const now = new Date().toISOString();
+
+    // Find matching template
+    // 根据模版类型找到匹配的项目模版
+    const template = PROJECT_TEMPLATES.find(t => t.type === type);
+
+    let steps: ProjectStep[];
+
+    if (template) {
+      console.log(`  Project "${title}": using template "${type}" with ${template.steps.length} steps`);
+      steps = template.steps.map((s, i) => ({
+        id: `${id}-step-${i + 1}`, // 项目ID+步骤ID
+        label: s.label, // 步骤标签
+        skill: s.skill, // 步骤对应的skill
+        toolSuggestion: s.toolSuggestion,
+        taskType: s.taskType,
+        // 步骤提示词，根据标题和描述填充模版
+        prompt: this.expandTemplate(s.promptTemplate, { title, description, ...context }),
+        status: 'pending' as const, // 步骤状态
+      }));
+    } else {
+      // Custom project — single step with the user's description
+      console.warn(`  Project "${title}": no template found for type "${type}" — creating single-step project`);
+      steps = [{
+        id: `${id}-step-1`,
+        label: title,
+        taskType: this.inferTaskType(description),
+        prompt: description,
+        status: 'pending',
+      }];
+    }
+
+    // Enhance steps with Author OS tool suggestions if available
+    if (this.authorOS) {
+      steps = this.enhanceWithAuthorOS(steps);
+    }
+    // 初始化项目
+    const project: Project = {
+      id, // 项目ID
+      type, // 模版类型
+      title, // 项目标题
+      description, // 项目描述
+      status: 'pending', // 状态
+      progress: 0, // 进度
+      steps, // 步骤
+      createdAt: now,
+      updatedAt: now,
+      context: context || {},
+    };
+
+    this.projects.set(id, project); // 收集项目到projects map
+    // 持久化
+    this.persistState();
+    return project;
+  }
+```
+### expandTemplate
+```ts
+  private expandTemplate(template: string, vars: Record<string, any>): string {
+    let result = template;
+    // 遍历按 字段 填充模版
+    for (const [key, value] of Object.entries(vars)) {
+      if (typeof value === 'string') {
+        result = result.replace(new RegExp(`\\{\\{${key}\\}\\}`, 'g'), value);
+      }
+    }
+    // Clean up any remaining unexpanded vars
+    result = result.replace(/\{\{[^}]+\}\}/g, '');
+    return result;
+  }
+
+```
+### persistState
+```ts
+ private persistState(): void {
+    if (this.saveDebounceTimer) clearTimeout(this.saveDebounceTimer);
+    this.saveDebounceTimer = setTimeout(async () => {
+      try {
+        const { mkdir } = await import('fs/promises');
+        const { dirname } = await import('path');
+        // 确保 projects-state.json 路径存在
+        await mkdir(dirname(this.stateFilePath), { recursive: true });
+        const state = {
+          nextId: this.nextId,
+          projects: Array.from(this.projects.values()).map(p => ({
+            ...p,
+            // Strip large step results to save space — they're already saved as individual files
+            // 去除大型步骤结果以节省空间——它们已作为单独文件保存
+            steps: p.steps.map(s => ({
+              ...s,
+              result: s.result ? s.result.substring(0, 500) + (s.result.length > 500 ? '\n\n[... truncated for state file — full output in project files ...]' : '') : undefined,
+            })),
+          })),
+        };
+        const { writeFile: wf } = await import('fs/promises');
+        // 保存 projects-state.json
+        await wf(this.stateFilePath, JSON.stringify(state, null, 2), 'utf-8');
+      } catch (err) {
+        console.error('  ⚠ Failed to persist project state:', err);
+      }
+    }, 1000);
+  }
+```
+>>>>>>> Stashed changes
 ## HeartbeatService
 ### constructor 构造函数
 ```ts

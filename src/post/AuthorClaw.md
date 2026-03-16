@@ -650,6 +650,195 @@ async start(): Promise<void> {
     return this.projectEngine;
   }
 ```
+### handleMessage
+```ts
+  async handleMessage(
+    content: string,
+    channel: string,
+    respond: (text: string) => void,
+    extraContext?: string,
+    overrideTaskType?: string,
+    preferredProvider?: string
+  ): Promise<void> {
+    // ── Security Check 1: Injection Detection ──
+    // 检测注入攻击脚本
+    const injectionResult = this.injectionDetector.scan(content);
+    if (injectionResult.detected) {
+      this.audit.log('security', 'injection_detected', {
+        channel,
+        type: injectionResult.type,
+        confidence: injectionResult.confidence,
+      });
+      respond('⚠️ I detected a potential prompt injection in your message. ' +
+        'For security, I\'ve blocked this input. If this is a false positive, ' +
+        'try rephrasing your request.');
+      return;
+    }
+
+    // ── Security Check 2: Rate Limiting ──
+    // 检测消息频率，每分钟30次上限
+    if (!this.permissions.checkRateLimit(channel)) {
+      respond('⏳ You\'re sending messages too quickly. Please wait a moment.');
+      return;
+    }
+
+    // ── Log the interaction ──
+    // 记录发送的消息内容的长度
+    this.audit.log('message', 'received', { channel, length: content.length });
+
+    // ── Build context ──
+    // 返回AI助手性格
+    const soul = this.soul.getFullContext();
+    const memories = await this.memory.getRelevant(content);
+    const activeProject = await this.memory.getActiveProject();
+    // 匹配到的skill.content数组
+    const skills = this.skills.matchSkills(content);
+    // 返回每日目标进度 例如'Daily word goal: 0/1000 (0%)'
+    const heartbeatContext = this.heartbeat.getContext();
+
+    // ── Determine best AI provider for this task ──
+    // Project steps pass their own taskType to avoid misclassification
+    // (e.g., "copy editing" in a prompt shouldn't route to premium tier)
+    // ── 确定最适合此任务的AI服务提供商 ──
+    // 项目步骤会传递自己的任务类型以避免错误分类
+    // （例如，提示中的“文案编辑”不应路由到高级服务层级）
+
+    const taskType = overrideTaskType || this.classifyTask(content);
+    const provider = this.aiRouter.selectProvider(taskType, preferredProvider);
+
+    // ── Log skill matching to activity ──
+    if (skills.length > 0) {
+      this.activityLog.log({
+        type: 'skill_matched',
+        source: channel.startsWith('telegram:') ? 'telegram' : channel === 'api' ? 'api' : 'dashboard',
+        message: `Matched ${skills.length} skill(s) for message`,
+        metadata: { skillName: skills.map(s => s.split('\n')[0]).join(', ') },
+      });
+    }
+
+    // ── Construct system prompt ──
+    let systemPrompt = this.buildSystemPrompt({
+      soul,
+      memories,
+      activeProject,
+      skills,
+      heartbeatContext,
+      channel,
+    });
+
+    if (extraContext) {
+      systemPrompt += '\n' + extraContext;
+    }
+
+    // ── Add to conversation history (skip for project engines + silent channels) ──
+    // Project steps use their own context chain, not the chat history
+    const isProjectChannel = channel === 'projects' || channel === 'project-engine' || channel === 'goal-engine';
+    const skipHistory = isProjectChannel || channel === 'conductor' || channel === 'api-silent';
+    if (!skipHistory) {
+      this.conversationHistory.push({
+        role: 'user',
+        content,
+        timestamp: new Date(),
+      });
+
+      const maxHistory = this.config.get('ai.maxHistoryMessages', 20);
+      if (this.conversationHistory.length > maxHistory * 2) {
+        this.conversationHistory = this.conversationHistory.slice(-maxHistory * 2);
+      }
+    }
+
+    // ── Build messages array ──
+    // Project steps get a CLEAN message array (just the step prompt)
+    // Chat messages include conversation history for continuity
+    const messages = isProjectChannel
+      ? [{ role: 'user' as const, content }]
+      : this.conversationHistory.map(m => ({
+          role: m.role as 'user' | 'assistant',
+          content: m.content,
+        }));
+
+    // ── Call AI ──
+    try {
+      const response = await this.aiRouter.complete({
+        provider: provider.id,
+        system: systemPrompt,
+        messages,
+      });
+
+      if (!skipHistory) {
+        this.conversationHistory.push({
+          role: 'assistant',
+          content: response.text,
+          timestamp: new Date(),
+        });
+      }
+
+      await this.memory.process(content, response.text);
+      this.costs.record(provider.id, response.tokensUsed);
+      this.heartbeat.recordActivity('message', { channel });
+
+      // Log to activity
+      this.activityLog.log({
+        type: 'chat_message',
+        source: channel.startsWith('telegram:') ? 'telegram' : channel === 'api' ? 'api' : 'dashboard',
+        message: `AI responded via ${provider.id}`,
+        metadata: {
+          provider: provider.id,
+          tokens: response.tokensUsed,
+          cost: response.estimatedCost,
+          wordCount: response.text.split(/\s+/).length,
+        },
+      });
+
+      this.audit.log('message', 'responded', {
+        channel,
+        provider: provider.id,
+        tokens: response.tokensUsed,
+        cost: response.estimatedCost,
+      });
+
+      respond(response.text);
+    } catch (error) {
+      this.audit.log('error', 'ai_completion_failed', {
+        provider: provider.id,
+        error: String(error),
+      });
+
+      this.activityLog.log({
+        type: 'error',
+        source: 'internal',
+        message: `AI provider ${provider.id} failed: ${String(error)}`,
+        metadata: { provider: provider.id },
+      });
+
+      // Try fallback provider
+      const fallback = this.aiRouter.getFallbackProvider(provider.id);
+      if (fallback) {
+        try {
+          console.log(`  ↻ Falling back to ${fallback.id}...`);
+          const response = await this.aiRouter.complete({
+            provider: fallback.id,
+            system: systemPrompt,
+            messages,
+          });
+          if (!skipHistory) {
+            this.conversationHistory.push({
+              role: 'assistant',
+              content: response.text,
+              timestamp: new Date(),
+            });
+          }
+          respond(response.text);
+        } catch {
+          respond('I\'m having trouble connecting to my AI providers right now. Please try again in a moment.');
+        }
+      } else {
+        respond('I\'m having trouble connecting to my AI providers right now. Please try again in a moment.');
+      }
+    }
+  }
+```
+
 ## ConfigService
 
 ### *constructor* 构造函数
@@ -764,7 +953,22 @@ this.initialized = true;
     this.permissions = { ...PRESETS[preset] }; // 按照传参初始化权限
   }
 ```
+### checkRateLimit
+每个渠道每分钟30次的请求上限频率
+```ts
+ checkRateLimit(channel: string): boolean {
+    const now = Date.now();
+    const entry = this.rateLimits.get(channel);
 
+    if (!entry || entry.resetAt < now) {
+      this.rateLimits.set(channel, { count: 1, resetAt: now + 60000 });
+      return true;
+    }
+
+    entry.count++;
+    return entry.count <= this.maxPerMinute;
+  }
+```
 ## AuditLog
 
 ### constructor构造函数
@@ -776,11 +980,39 @@ constructor(logDir: string) {
 ```
 
 ### initialize
-
+路径：'/Users/zhengjiajun/zjj/self/authorclaw/workspace/.audit'
 ```ts
 async initialize(): Promise<void> {
   await mkdir(this.logDir, { recursive: true }); // 确保日志目录存在
 }
+```
+### log
+日志打印
+参数
+- 分类 例如'message'
+- 动作 例如'received'
+- 数据
+```ts
+  async log(category: string, action: string, data: Record<string, any>): Promise<void> {
+    const entry = {
+      timestamp: new Date().toISOString(),
+      category,
+      action,
+      data,
+      previousHash: this.lastHash,
+    };
+
+    // Chain hashes for tamper detection
+    // 用于篡改检测的链式哈希
+    const entryStr = JSON.stringify(entry);
+    this.lastHash = createHash('sha256').update(entryStr).digest('hex').substring(0, 16);
+
+    const logLine = JSON.stringify({ ...entry, hash: this.lastHash }) + '\n';
+    const logFile = join(this.logDir, `${new Date().toISOString().split('T')[0]}.jsonl`);
+    // appendFile(path, data)：把内容追加到文件末尾，不覆盖已有内容。文件不存在会创建。
+    // writeFile(path, data)：默认是从头写入并覆盖原文件内容（相当于清空再写新内容）。文件不存在也会创建。
+    await appendFile(logFile, logLine);
+  }
 ```
 
 ## SandboxGuard
@@ -863,7 +1095,36 @@ async load(): Promise<void> {
   }
 }
 ```
+### getFullContext
+```ts
+  getFullContext(): string {
+    let context = '';
 
+    if (this.personality) {
+      // 添加人物性格
+      context += this.personality + '\n\n';
+    }
+
+    // Personality override comes right after soul — it modifies chat tone
+    // without affecting writing output quality
+    // 人格覆盖紧随灵魂之后——它改变聊天语气
+    // 而不影响写作输出质量
+
+    if (this.personalityOverride) {
+      context += this.personalityOverride + '\n\n';
+    }
+    // 写作风格
+    if (this.styleGuide) {
+      context += '## Writing Style Guide\n\n' + this.styleGuide + '\n\n';
+    }
+    // 声音档案
+    if (this.voiceProfile) {
+      context += '## Author Voice Profile\n\n' + this.voiceProfile + '\n\n';
+    }
+    // 返回上下文
+    return context || 'You are AuthorClaw, a helpful writing assistant for authors.';
+  }
+```
 ## MemoryService
 
 ### constructor构造函数
@@ -906,7 +1167,66 @@ async initialize(): Promise<void> {
   }
 }
 ```
+### getRelevant
+从memory目录中读取相关缓存文件返回
+```ts
+  async getRelevant(query: string): Promise<string> {
+    const parts: string[] = [];
 
+    // Get conversation summaries (last 5)
+    // 获取对话摘要（最近5条）
+    const recentSummaries = this.conversationSummaries.slice(-5);
+    if (recentSummaries.length > 0) {
+      parts.push('Recent context:\n' + recentSummaries.join('\n'));
+    }
+
+    // Get book bible entries if a project is active
+    // 如果项目处于活动状态，则获取书籍圣经条目
+    if (this.activeProjectPath) {
+      const biblePath = join(this.memoryDir, 'book-bible', this.activeProjectPath);
+      if (existsSync(biblePath)) {
+        const files = (await readdir(biblePath)).sort();
+        const queryWords = query.toLowerCase().split(/\s+/).filter(w => w.length > 2);
+
+        // Read all files and score by keyword relevance
+        const scored: { file: string; content: string; score: number }[] = [];
+        for (const file of files) {
+          const content = await readFile(join(biblePath, file), 'utf-8');
+          let score = 0;
+          if (queryWords.length > 0) {
+            const lowerFile = file.toLowerCase();
+            const lowerContent = content.toLowerCase();
+            for (const word of queryWords) {
+              if (lowerFile.includes(word)) score += 2;
+              if (lowerContent.includes(word)) score += 1;
+            }
+          }
+          scored.push({ file, content, score });
+        }
+
+        // Sort by relevance score descending, then alphabetically for ties
+        scored.sort((a, b) => b.score - a.score || a.file.localeCompare(b.file));
+
+        for (const { file, content } of scored.slice(0, 10)) {
+          parts.push(`[${file}]: ${content.substring(0, 5000)}`);
+        }
+      }
+    }
+    // 返回
+    return parts.join('\n\n');
+  }
+```
+### getActiveProject
+```ts
+  async getActiveProject(): Promise<string | null> {
+    if (!this.activeProjectPath) return null;
+    const projectFile = join(this.memoryDir, 'book-bible', this.activeProjectPath, 'project.md');
+    if (existsSync(projectFile)) {
+      return await readFile(projectFile, 'utf-8');
+    }
+    return null;
+  }
+```
 ## CostTracker
 
 ### constructor构造函数
@@ -1193,6 +1513,25 @@ for (const category of ['core', 'author', 'marketing', 'premium'] as const) {
     return grouped;
   }
 ```
+### matchSkills
+根据输入内容去匹配skill.triggers字段，返回匹配到的skill.content数组
+```ts
+  matchSkills(input: string): string[] {
+    const matched: string[] = [];
+    const lower = input.toLowerCase();
+
+    for (const [, skill] of this.skills) {
+      for (const trigger of skill.triggers) {
+        if (lower.includes(trigger.toLowerCase())) {
+          matched.push(skill.content);
+          break;
+        }
+      }
+    }
+
+    return matched;
+  }
+```
 ## AuthorOSService
 ### constructor构造函数
 ```ts
@@ -1451,6 +1790,32 @@ getTemplates(): Array<{ type: ProjectType; label: string; description: string; s
     return project;
   }
 ```
+### getProject
+从projects map中获取项目配置信息
+```ts
+  getProject(id: string): Project | undefined {
+    return this.projects.get(id);
+  }
+```
+### startProject
+```ts
+  startProject(id: string): ProjectStep | null {
+    const project = this.projects.get(id);
+    if (!project) return null;
+
+    project.status = 'active'; // 设置项目状态为激活状态
+    project.updatedAt = new Date().toISOString(); //设置项目更新时间
+    // 找到项目中第一个待处理的步骤
+    const firstPending = project.steps.find(s => s.status === 'pending');
+    // 如果存在，就标记为激活状态，返回该步骤
+    if (firstPending) {
+      firstPending.status = 'active';
+      return firstPending;
+    }
+
+    return null;
+  }
+```
 ### expandTemplate
 ```ts
   private expandTemplate(template: string, vars: Record<string, any>): string {
@@ -1498,7 +1863,142 @@ getTemplates(): Array<{ type: ProjectType; label: string; description: string; s
     }, 1000);
   }
 ```
+### buildProjectContext
+```ts
+  async buildProjectContext(project: Project, step: ProjectStep): Promise<string> {
+    let context = `\n# Current Project\n\n`; // 当前项目
+    context += `**Project**: ${project.title}\n`; // 项目标题
+    context += `**Type**: ${project.type}\n`; // 项目类型 比如 book-planning
+    context += `**Progress**: ${project.progress}% (step ${project.steps.indexOf(step) + 1} of ${project.steps.length})\n`; // 项目进度
+    context += `**Current Step**: ${step.label}\n\n`; // 当前步骤标签
 
+    // Novel pipeline: phase-aware context accumulation
+    if (project.type === 'novel-pipeline' && step.phase) {
+      context += this.buildNovelPipelineContext(project, step);
+    } else {
+      // Default: add results from prior steps
+      // 添加之前步骤的结果
+      const completedSteps = project.steps.filter(s => s.status === 'completed' && s.result);
+      if (completedSteps.length > 0) {
+        context += `## Previous Steps Completed\n\n`;
+        for (const cs of completedSteps) {
+          context += `### ${cs.label}\n`;
+          const result = cs.result!;
+          if (result.length > 2000) {
+            context += `[...truncated...]\n${result.slice(-2000)}\n\n`;
+          } else {
+            context += `${result}\n\n`;
+          }
+        }
+      }
+    }
+
+    // Include uploaded manuscript content (from Upload button)
+    // 包含上传的手稿内容
+    if (project.context?.uploadedContent) {
+      const uploads = project.context.uploads || [];
+      const fileList = uploads.map((u: any) => `${u.filename} (${u.wordCount} words)`).join(', ');
+      context += `## Uploaded Manuscript\n\n`;
+      context += `**Files**: ${fileList}\n\n`;
+      // Include up to 30k chars of uploaded content for the AI to work with
+      const uploaded = String(project.context.uploadedContent);
+      if (uploaded.length > 30000) {
+        context += uploaded.substring(0, 30000) + '\n\n[...truncated at 30,000 chars — full text available in workspace...]\n\n';
+      } else {
+        context += uploaded + '\n\n';
+      }
+    }
+
+    // Inject Core Lessons from self-improvement analysis (if available)
+    // These are distilled insights from all previous completed projects
+    // 注入自我提升分析中的核心经验（如有）
+    // 这些是从所有已完成项目中提炼出的深刻见解
+    const coreLessons = await this.getCoreLessons();
+    if (coreLessons) {
+      context += `\n## Writing Lessons Learned\n\n${coreLessons}\n\n`;
+    }
+
+    // Add Author OS tool suggestion with actionable instructions
+    // 添加带有可操作说明的作者操作系统工具建议
+    if (step.toolSuggestion) {
+      const toolInstructions: Record<string, string> = {
+        'workflow-engine': 'Load the relevant JSON workflow template and follow its step sequence.',
+        'book-bible': 'Use the Book Bible data for character/world consistency checks.',
+        'manuscript-autopsy': 'Run manuscript analysis for pacing and structure feedback.',
+        'format-factory': 'Use Format Factory Pro: python format_factory_pro.py <input> -t "Title" --all',
+        'creator-asset-suite': 'Generate marketing assets using the Creator Asset Suite tools.',
+        'ai-author-library': 'Reference writing prompts and voice markers from the library.',
+      };
+      context += `\n**Suggested Tool**: Author OS ${step.toolSuggestion}\n`;
+      const instruction = toolInstructions[step.toolSuggestion];
+      if (instruction) {
+        context += `**How to use**: ${instruction}\n`;
+      }
+    }
+
+    return context;
+  }
+```
+### getCoreLessons
+```ts
+  private async getCoreLessons(): Promise<string | null> {
+    const now = Date.now();
+    // Return cached version if less than 5 minutes old
+    // 如果缓存版本生成时间少于5分钟，则返回缓存版本
+    if (this.coreLessonsCache !== null && (now - this.coreLessonsCacheTime) < 300000) {
+      return this.coreLessonsCache;
+    }
+
+    const coreLessonsPath = join(this.rootDir, 'workspace', '.agent', 'core-lessons.md');
+    if (!existsSync(coreLessonsPath)) {
+      this.coreLessonsCache = null;
+      this.coreLessonsCacheTime = now;
+      return null;
+    }
+
+    try {
+      const content = await readFile(coreLessonsPath, 'utf-8');
+      // Strip the header, just get the lessons content (max 1500 chars to not bloat context)
+      const body = content.replace(/^#.*\n\n\*[^*]+\*\n\n/, '').trim();
+      this.coreLessonsCache = body.length > 1500 ? body.substring(0, 1500) + '\n...' : body;
+      this.coreLessonsCacheTime = now;
+      return this.coreLessonsCache;
+    } catch {
+      this.coreLessonsCache = null;
+      this.coreLessonsCacheTime = now;
+      return null;
+    }
+  }
+```
+### buildStepUserMessage
+```ts
+  async function buildStepUserMessage(project: any, step: any): Promise<string> {
+    let message = step.prompt; // 获取步骤中的提示
+    // 将上传的手稿直接注入用户消息中，确保AI不会遗漏
+    const uploads = project.context?.uploads || [];
+    const fileList = uploads.map((u: any) => `${u.filename} (${u.wordCount?.toLocaleString() || '?'} words)`).join(', ');
+
+    // Large document path: read from disk with smart truncation
+    // 大文档路径：从磁盘读取并进行智能截断
+    if (project.context?.documentLibraryFile) {
+      const excerpt = await getSmartExcerpt(
+        project.context.documentLibraryFile,
+        project.context.documentWordCount || 0
+      );
+      message = `## Manuscript to Work With\n\nUploaded files: ${fileList}\n\n${excerpt}\n\n---\n\n## Your Task\n\n${message}`;
+      return message;
+    }
+
+    // Small document path: use inline uploaded content (same as before)
+    // 小文件路径：使用内联上传内容（与之前相同进行智能截断） 
+    if (project.context?.uploadedContent) {
+      const uploaded = String(project.context.uploadedContent).substring(0, 30000);
+      message = `## Manuscript to Work With\n\nUploaded files: ${fileList}\n\n${uploaded}\n\n---\n\n## Your Task\n\n${message}`;
+    }
+    // 返回提示
+    return message;
+  }
+```
 ## HeartbeatService
 ### constructor 构造函数
 ```ts
@@ -1656,4 +2156,153 @@ getTemplates(): Array<{ type: ProjectType; label: string; description: string; s
     applyProjectOptions(project);
     res.json({ project, planning: 'template' });
   });
+```
+
+### 执行步骤
+```ts
+  // Auto-execute ALL steps of a project (fully autonomous mode)
+  app.post('/api/projects/:id/auto-execute', async (req: Request, res: Response) => {
+    const engine = gateway.getProjectEngine?.(); // 获取项目引擎类
+    if (!engine) {
+      return res.status(503).json({ error: 'Project engine not initialized' });
+    }
+    const project = engine.getProject(req.params.id); // 获取项目配置信息
+    if (!project) {
+      return res.status(404).json({ error: 'Project not found' });
+    }
+    // 如果项目状态是pending 待处理 则开始启动项目
+    if (project.status === 'pending') {
+      // 设置项目状态为激活状态
+      // 找到项目中第一个待处理的步骤 标记为激活状态
+      engine.startProject(req.params.id);
+    } else if (project.status === 'paused') {
+      project.status = 'active';
+      const firstPending = project.steps.find((s: any) => s.status === 'pending');
+      if (firstPending) firstPending.status = 'active';
+    }
+
+    const results: Array<{ step: string; success: boolean; wordCount?: number; error?: string }> = [];
+    const { join } = await import('path');
+    const { mkdir, writeFile } = await import('fs/promises');
+    // 工作空间路径
+    const workspaceDir = join(baseDir, 'workspace');
+    // 循环执行
+    while (true) {
+      //  获取项目配置信息
+      const currentProject = engine.getProject(req.params.id);
+      if (!currentProject) break;
+
+      // Check if project was paused externally (via /stop or dashboard)\
+      // 检查项目是否被外部暂停（通过/stop或仪表板）
+      if (currentProject.status === 'paused' || currentProject.status === 'completed') break;
+      // 找到第一个激活的步骤
+      const activeStep = currentProject.steps.find((s: any) => s.status === 'active');
+      if (!activeStep) break;
+
+      try {
+        // 构想项目上下文
+        const projectContext = await engine.buildProjectContext(currentProject, activeStep);
+        // 构建步骤提示
+        const userMessage = await buildStepUserMessage(currentProject, activeStep);
+        let response = '';
+
+        await gateway.handleMessage(
+          userMessage, // 步骤提示
+          'project-engine', // 渠道
+          (text: string) => { response = text; }, // 回调
+          projectContext, // 项目上下文
+          // 使用步骤自身的 taskType 进行路由
+          activeStep.taskType || undefined  // Use step's own taskType for routing
+        );
+
+        // Retry once with 'general' routing if the response is too short
+        // This catches cases where a premium/mid provider fails but free providers work fine
+        if (!response || response.length < 50) {
+          console.log(`  ↻ Step "${activeStep.label}" got short response — retrying with general routing...`);
+          response = '';
+          await gateway.handleMessage(
+            userMessage,
+            'project-engine',
+            (text: string) => { response = text; },
+            projectContext,
+            'general'  // Force free-tier routing (Gemini first)
+          );
+        }
+
+        if (!response || response.length < 50) {
+          engine.failStep(currentProject.id, activeStep.id, 'Empty or too-short response from AI');
+          results.push({ step: activeStep.label, success: false, error: 'Insufficient AI response' });
+          break;
+        }
+
+        const wordCount = response.split(/\s+/).length;
+
+        // Save to file
+        try {
+          const projectDir = join(workspaceDir, 'projects', currentProject.title.toLowerCase().replace(/[^a-z0-9]+/g, '-'));
+          await mkdir(projectDir, { recursive: true });
+          const stepFileName = `${activeStep.id}-${activeStep.label.toLowerCase().replace(/[^a-z0-9]+/g, '-')}.md`;
+          await writeFile(join(projectDir, stepFileName), `# ${activeStep.label}\n\n${response}`, 'utf-8');
+        } catch { /* non-fatal */ }
+
+        engine.completeStep(currentProject.id, activeStep.id, response);
+        // Track words for Morning Briefing
+        services.heartbeat.addWords(wordCount);
+        results.push({ step: activeStep.label, success: true, wordCount });
+
+        // ── Manuscript Assembly: combine chapter files after assembly step ──
+        if ((activeStep as any).phase === 'assembly' && currentProject.type === 'novel-pipeline') {
+          try {
+            const { existsSync: exLocal } = await import('fs');
+            const { readFile: readF } = await import('fs/promises');
+            const projectSlug = currentProject.title.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+            const projectDir = join(workspaceDir, 'projects', projectSlug);
+
+            const writingSteps = currentProject.steps
+              .filter((s: any) => s.phase === 'writing' && s.status === 'completed')
+              .sort((a: any, b: any) => (a.chapterNumber || 0) - (b.chapterNumber || 0));
+
+            const chapterContents: string[] = [];
+            for (const ws of writingSteps) {
+              const expectedFile = `${(ws as any).id}-${(ws as any).label.toLowerCase().replace(/[^a-z0-9]+/g, '-')}.md`;
+              const fullPath = join(projectDir, expectedFile);
+              if (exLocal(fullPath)) {
+                const raw = await readF(fullPath, 'utf-8');
+                const content = raw.replace(/^# .+\n\n/, '');
+                chapterContents.push(`## Chapter ${(ws as any).chapterNumber || chapterContents.length + 1}\n\n${content}`);
+              }
+            }
+
+            if (chapterContents.length > 0) {
+              const manuscriptMd = `# ${currentProject.title}\n\n` + chapterContents.join('\n\n---\n\n');
+              await writeFile(join(projectDir, 'manuscript.md'), manuscriptMd, 'utf-8');
+
+              const docxBuffer = await generateDocxBuffer({
+                title: currentProject.title,
+                author: 'AuthorClaw',
+                content: manuscriptMd,
+              });
+              await writeFile(join(projectDir, 'manuscript.docx'), docxBuffer);
+              console.log(`  [assembly] Manuscript assembled: ${chapterContents.length} chapters`);
+            }
+          } catch { /* non-fatal */ }
+        }
+
+        // Re-check pause AFTER step completes (catches /stop sent during long AI call)
+        const freshProject = engine.getProject(req.params.id);
+        if (freshProject?.status === 'paused' || freshProject?.status === 'completed') break;
+      } catch (error) {
+        engine.failStep(currentProject.id, activeStep.id, String(error));
+        results.push({ step: activeStep.label, success: false, error: String(error) });
+        break;
+      }
+    }
+
+    res.json({
+      success: true,
+      results,
+      project: engine.getProject(req.params.id),
+    });
+  });
+
 ```

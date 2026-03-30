@@ -121,6 +121,7 @@ export default defineConfig({
         items: [
           { text: "租房", link: "/租房" },
           { text: "菜谱", link: "/菜谱" },
+          { text: "舟山攻略", link: "/舟山攻略" },
         ],
       },
     ],

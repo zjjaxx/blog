@@ -2393,6 +2393,440 @@ getTemplates(): Array<{ type: ProjectType; label: string; description: string; s
   }
 ```
 
+### createNovelPipeline
+```ts
+  createNovelPipeline(title: string, description: string, config: NovelPipelineConfig = {}): Project {
+    const id = `project-${this.nextId++}`;
+    const now = new Date().toISOString();
+
+    const chapters = Math.min(Math.max(config.targetChapters || 25, 1), 200);// 章数
+    const wordsPerChapter = Math.max(config.targetWordsPerChapter || 3000, 100);// 每章字数
+
+    // Build premise context from config fields
+    const premiseContext = [
+      config.logline && `Logline: ${config.logline}`,
+      config.genre && `Genre: ${config.genre}`,
+      config.setting && `Setting: ${config.setting}`,
+      config.tone && `Tone: ${config.tone}`,
+      config.pov && `POV: ${config.pov}`,
+      config.tense && `Tense: ${config.tense}`,
+      config.themes && `Themes: ${config.themes}`,
+      config.protagonistName && `Protagonist: ${config.protagonistName}`,
+      config.antagonistName && `Antagonist: ${config.antagonistName}`,
+    ].filter(Boolean).join('\n');
+
+    const premiseBlock = premiseContext
+      ? `\n\nProject Configuration:\n${premiseContext}`
+      : '';
+
+    // Calculate structural beats for outline
+    // 把“开场铺垫”结束点设为总章数的 12%，并且至少是第 1 章。
+    const setupEnd = Math.max(Math.round(chapters * 0.12), 1);
+    // 把“引发事件”结束点设为 20%，且强制比 setupEnd 至少晚 1 章，避免重叠。
+    const incitingEnd = Math.max(Math.round(chapters * 0.20), setupEnd + 1);
+    // 中点转折在 50% 附近。
+    const midpoint = Math.round(chapters * 0.50);
+    // 75% 处的大转折点。
+    const twist75 = Math.round(chapters * 0.75);
+    // 高潮开始于倒数第 3 章。
+    const climaxStart = chapters - 2;
+    // 高潮结束于倒数第 2 章（通常最后一章留给结局/尾声）。
+    const climaxEnd = chapters - 1;
+
+    const steps: ProjectStep[] = [];
+    let stepNum = 0;
+
+    const addStep = (
+      label: string,
+      phase: string,
+      taskType: string,
+      prompt: string,
+      opts: { skill?: string; wordCountTarget?: number; chapterNumber?: number } = {}
+    ) => {
+      stepNum++;
+      steps.push({
+        id: `${id}-step-${stepNum}`,
+        label,
+        phase,
+        taskType,
+        prompt,
+        status: 'pending',
+        skill: opts.skill,
+        wordCountTarget: opts.wordCountTarget,
+        chapterNumber: opts.chapterNumber,
+      });
+    };
+    
+    // ── Phase: Premise (2 steps) ──
+    // 这里把 premise 拆成 2 步，本质是为了先定骨架，再加复杂度，提高生成质量和可控性。
+    // 第 1 步 Develop premise：先把故事核心搭起来
+    // 产出基础要素：logline、what-if、want/need、核心冲突、stakes、theme、同类作品。
+    // 目标是先得到一个“能讲通”的版本，避免一上来信息过载。
+
+    // 将这个故事概念发展成完整的《title》前提：{premiseBlock}\n\n${description}\n\n请创建：\n- 一句精炼的剧情梗概（1-2句话）\n- 核心的“假设性”问题\n- 主角的欲望与需求对比\n- 核心冲突\n- 风险层次：个人层面、职业层面、全球层面\n- 主题陈述\n- 3部类似题材作品\n\n请提供详尽细致的回答。不要使用缩写。
+    addStep('Develop premise', 'premise', 'general',
+      `Develop this story concept into a complete premise for "${title}":${premiseBlock}\n\n${description}\n\nCreate:\n- A refined logline (1-2 sentences)\n- The central What-If question\n- Protagonist's want vs need\n- The core conflict\n- Stakes: personal, professional, and global\n- Theme statement\n- 3 comparable titles\n\nWrite a thorough, detailed response. Do not abbreviate.`,
+      { skill: 'premise' }
+    );
+    // 进一步完善“${title}”的前提设定。基于初始前提，补充以下内容：
+    // 反派的动机与逻辑​
+    // 倒计时元素：具体什么期限会制造紧迫感？
+    // 3个可能的剧情转折点（中点一个，75%处一个，最终揭露一个）
+    // 情感核心：主角的个人创伤或失去什么在推动其行动？
+    // 请提供详尽细致的回答。
+
+    addStep('Refine premise', 'premise', 'general',
+      `Refine the "${title}" premise further. Using everything from the initial premise, add:\n- The antagonist's motivation and logic\n- The ticking clock: what specific deadline creates urgency?\n- 3 possible plot twists (one at midpoint, one at 75%, one final revelation)\n- The emotional core: what personal loss or wound drives the protagonist?\n\nWrite a thorough, detailed response.`,
+      { skill: 'premise' }
+    );
+
+    // ── Phase: Book Bible (6 steps) ──
+    // 为"${title}"创建一个详细的主角档案。
+
+    // 包含：全名、年龄、角色、技能、致命缺陷、情感创伤、背景故事、动机（表面需求 vs 深层需求）、从开始到结束的角色成长弧线、说话方式、外貌描述以及关键人际关系。
+
+    // 撰写500字以上的实质性角色发展内容。
+    addStep('Protagonist profile', 'bible', 'book_bible',
+      `Create a detailed protagonist profile for "${title}".\n\nInclude: full name, age, role, skills, fatal flaw, emotional wound, backstory, motivation (want vs need), character arc from beginning to end, speech patterns, physical description, and key relationships.\n\nWrite 500+ words of substantive character development.`,
+      { skill: 'book-bible' }
+    );
+    // 为"${title}"创建一个详细的反派角色档案。
+    // 包含以下要素：能力、限制、目标、动机、背景故事、沟通风格、性格怪癖、他们为何认为自己是对的，以及他们如何挑战主角。
+    // 撰写500字以上的实质性角色发展内容。
+    addStep('Antagonist profile', 'bible', 'book_bible',
+      `Create a detailed antagonist profile for "${title}".\n\nInclude: capabilities, constraints, goals, motivation, backstory, communication style, personality quirks, why they believe they're right, and how they challenge the protagonist.\n\nWrite 500+ words of substantive character development.`,
+      { skill: 'book-bible' }
+    );
+    // 为"${title}"创建3-4个配角档案。
+    // 每个角色需包含：姓名、年龄、故事中的角色、与主角的关系、动机、背景故事、性格特征、说话方式，以及他们如何推动主角的成长弧光。
+    // 总字数需超过500字。
+    addStep('Supporting characters', 'bible', 'book_bible',
+      `Create 3-4 supporting character profiles for "${title}".\n\nFor each character include: name, age, role in the story, relationship to protagonist, motivation, backstory, personality traits, speech patterns, and how they contribute to the protagonist's arc.\n\nWrite 500+ words total.`,
+      { skill: 'book-bible' }
+    );
+    // 为“${title}”构建主要场景。
+
+    // 设计4-5个关键场景。每个场景需包含：名称、物理描述、氛围、常驻人物、情节关联性以及感官细节（声音、气味、触感、光线）。
+
+    // 撰写500字以上内容。
+    addStep('Major locations', 'bible', 'book_bible',
+      `Build out the major locations for "${title}".\n\nCreate 4-5 key locations. For each: name, physical description, atmosphere, who frequents it, significance to the plot, and sensory details (sounds, smells, textures, light).\n\nWrite 500+ words.`,
+      { skill: 'book-bible' }
+    );
+    // 为"${title}"创建详细时间线。  
+    // 需包含：小说开始前的关键背景事件、主要情节事件的时序排列、危机升级节点以及结局时间线。标注每个关键事件中出场的人物。  
+    // 字数要求500词以上。
+    addStep('Timeline', 'bible', 'book_bible',
+      `Create a detailed timeline for "${title}".\n\nInclude: key backstory events before the novel begins, the chronological sequence of major plot events, crisis escalation points, and the resolution timeline. Note which characters are present at each key event.\n\nWrite 500+ words.`,
+      { skill: 'book-bible' }
+    );
+    // 为《${title}》创建一致性指南和世界观规则文档。
+    // 需包含：命名规范、核心术语、角色外貌特征（需保持统一）、科技/魔法设定、社会结构，以及其他需要在${chapters}章节中保持一致的细节内容。
+    // 撰写500字以上。
+    addStep('World rules & consistency guide', 'bible', 'consistency',
+      `Create a consistency guide and world rules document for "${title}".\n\nInclude: naming conventions, key terminology, character physical details that must remain consistent, technology/magic rules, social structures, and any other details that must stay consistent across ${chapters} chapters.\n\nWrite 500+ words.`,
+      { skill: 'book-bible' }
+    );
+
+    // ── Phase: Outline (2 steps) ──
+    // 为《${title}》创建一个包含${chapters}章的结构化大纲，并标注情节节点。
+    // 每章需包含：
+    // - 章节编号与标题
+    // - 视角角色
+    // - 主要场景
+    // - 3-5个关键情节点
+    // - 紧张程度（1-10分）
+    // - 章节收尾悬念钩子
+
+    // 结构划分：
+    // - 第1-${setupEnd}章：背景铺垫与世界构建
+    // - 第${setupEnd + 1}-${incitingEnd}章：导火索事件
+    // - 第${incitingEnd + 1}-${midpoint - 1}章：情节升级
+    // - 第${midpoint}章：中点转折
+    // - 第${midpoint + 1}-${twist75 - 1}章：多重复杂化
+    // - 第${twist75}章：75%处转折/全面崩溃
+    // - 第${climaxStart}-${climaxEnd}章：高潮段落
+    // - 第${chapters}章：结局收尾
+
+    // 必须完整包含所有${chapters}个章节，不得提前终止。为每个章节编号。
+    addStep('Chapter outline', 'outline', 'outline',
+      `Create a ${chapters}-chapter outline for "${title}" with structural beats.\n\nFor each chapter include:\n- Chapter number and title\n- POV character\n- Primary location\n- 3-5 key beats\n- Tension level (1-10)\n- Chapter ending hook\n\nStructure:\n- Chapters 1-${setupEnd}: Setup and world introduction\n- Chapters ${setupEnd + 1}-${incitingEnd}: Inciting incident\n- Chapters ${incitingEnd + 1}-${midpoint - 1}: Rising action\n- Chapter ${midpoint}: Midpoint twist\n- Chapters ${midpoint + 1}-${twist75 - 1}: Complications multiply\n- Chapter ${twist75}: 75% twist / all is lost\n- Chapters ${climaxStart}-${climaxEnd}: Climax sequence\n- Chapter ${chapters}: Resolution\n\nYou MUST include ALL ${chapters} chapters. Do NOT stop early. Number every chapter.`,
+      { skill: 'outline' }
+    );
+    // 将 `${chapters}` 章的大纲扩展为《"${title}"》的逐场情节分解。
+    // 为每一章创建 2-4 个场景，包含以下内容：  
+    // - 场景目标与冲突  
+    // - 关键对话或揭示性时刻  
+    // - 情感节奏点  
+    // - 每场预估字数  
+
+    // 每章目标字数约 `${wordsPerChapter}` 词。尤其关注激励事件、中点转折和高潮段落的设计。
+    addStep('Scene breakdowns', 'outline', 'outline',
+      `Expand the ${chapters}-chapter outline into scene-by-scene breakdowns for "${title}".\n\nFor each chapter, create 2-4 scenes with:\n- Scene goal and conflict\n- Key dialogue moments or reveals\n- Emotional beats\n- Estimated word count per scene\n\nTarget ~${wordsPerChapter} words per chapter. Focus especially on the inciting incident, midpoint twist, and climax sequence.`,
+      { skill: 'outline' }
+    );
+  
+    // ── Phase: Writing (N steps, one per chapter) ──
+    for (let ch = 1; ch <= chapters; ch++) {
+      // 撰写《${title}》的第${ch}章。
+
+      // 要求：
+      // - 遵循本章节的大纲要点和场景分解
+      // - 查阅《作品圣经》以确保角色一致性
+      // - 必须完成至少${wordsPerChapter}字的实际叙事性散文
+      // - 以吸引人的开篇切入——不要铺垫性内容
+      // - 结尾要留有悬念吸引读者继续阅读
+      // - 包含感官细节和内心冲突描写
+      // - 以完整散文形式呈现整个章节，而非摘要
+      // - 绝对不可少于${wordsPerChapter}字。若篇幅不足，需增加场景、对话、内心独白或感官细节描写
+
+      addStep(`Write Chapter ${ch}`, 'writing', 'creative_writing',
+        `Write Chapter ${ch} of "${title}".\n\nInstructions:\n- Follow the outline beats and scene breakdowns for this chapter\n- Check the Book Bible for character consistency\n- You MUST write at least ${wordsPerChapter} words of actual prose narrative\n- Open with a hook — no throat-clearing\n- End with a reason to turn the page\n- Include sensory details and internal tension\n- Write the COMPLETE chapter as actual prose, not a summary\n- Do NOT write fewer than ${wordsPerChapter} words. If running short, add more scenes, dialogue, internal monologue, sensory detail.`,
+        { skill: 'write', wordCountTarget: wordsPerChapter, chapterNumber: ch }
+      );
+    }
+
+    // ── Phase: Revision (3 steps) ──
+    // 对《title》的所有{chapters}个章节进行发展性编辑审阅。
+    // 分析内容需包括：
+    // 整体故事线的情节结构与节奏把控
+    // 角色成长弧的完成度（人物是否按设定实现成长转变？）
+    // 矛盾张力与风险层级的递进
+    // 主题思想的连贯性
+    // 章节间的叙事驱动力与悬念衔接
+    // 要求提供具体到每个章节的反馈意见，并给出可操作性修改建议。
+
+    addStep('Developmental edit', 'revision', 'revision',
+      `Perform a developmental edit across all ${chapters} chapters of "${title}".\n\nAnalyze:\n- Plot structure and pacing across the full arc\n- Character arc completion (do characters grow/change as planned?)\n- Tension and stakes escalation\n- Thematic coherence\n- Narrative drive and hooks between chapters\n\nProvide specific, chapter-by-chapter feedback with actionable suggestions.`,
+      { skill: 'revise' }
+    );
+    // 对《${title}》进行逐行编辑审阅。
+    // 重点关注：
+    // - 句子节奏与多样性
+    // - 选词与动词力度
+    // - "展示"与"讲述"的运用
+    // - 对话质量及对话标签使用
+    // - 行文清晰度与流畅性
+    // - 需删减的填充词（突然、非常、只是、基本上）
+
+    // 请从各章节中提供具体修改案例，展示修改前后的对比建议。
+    addStep('Line edit notes', 'revision', 'revision',
+      `Perform a line edit review of "${title}".\n\nFocus on:\n- Sentence rhythm and variety\n- Word choice and verb strength\n- Show vs tell instances\n- Dialogue quality and tag usage\n- Prose clarity and flow\n- Filler words to cut (suddenly, very, just, basically)\n\nProvide specific examples from the chapters with before/after suggestions.`,
+      { skill: 'revise' }
+    );
+    // 对《${title}》的所有${chapters}个章节进行与《圣经》一致性的检查。
+
+    // 检查内容包括：
+    // - 角色描述的矛盾
+    // - 时间线的不一致
+    // - 地点细节的差异
+    // - 违反世界规则的情况
+    // - 情节漏洞或未解决的线索
+    // - 语气/风格的不一致
+
+    // 列出具体问题并注明相关章节。
+    addStep('Consistency check', 'revision', 'consistency',
+      `Run a consistency check across all ${chapters} chapters of "${title}" against the Book Bible.\n\nCheck for:\n- Character description contradictions\n- Timeline inconsistencies\n- Location detail mismatches\n- World rule violations\n- Plot holes or dropped threads\n- Tone/voice inconsistencies\n\nList any issues with specific chapter references.`,
+      { skill: 'revise' }
+    );
+
+    // ── Phase: Assembly (1 step) ──
+    // 为"${title}"生成一份完成报告。
+
+    // 包括：
+    // - 总章节数：${chapters}
+    // - 目标字数：约${(chapters * wordsPerChapter).toLocaleString()}字
+    // - 对稿件优点的评估
+    // - 未来修改稿中需要改进的方面
+    // - 2-3句封底简介
+    // - 后续步骤建议（如试读者、专业编辑等）
+
+    // 所有章节文件已单独保存。本报告总结了完整的流程。
+    addStep('Assemble manuscript & report', 'assembly', 'general',
+      `Generate a completion report for "${title}".\n\nInclude:\n- Total chapters: ${chapters}\n- Target word count: ~${(chapters * wordsPerChapter).toLocaleString()} words\n- Assessment of the manuscript's strengths\n- Areas for improvement in a future draft\n- 2-3 sentence back cover blurb\n- Recommendations for next steps (beta readers, professional edit, etc.)\n\nAll chapter files have been saved individually. This report summarizes the complete pipeline.`
+    );
+
+    const project: Project = {
+      id,
+      type: 'novel-pipeline',
+      title,
+      description,
+      status: 'pending',
+      progress: 0,
+      steps,
+      createdAt: now,
+      updatedAt: now,
+      context: {
+        planning: 'novel-pipeline',
+        config,
+        targetChapters: chapters,
+        targetWordsPerChapter: wordsPerChapter,
+        estimatedTotalWords: chapters * wordsPerChapter,
+      },
+    };
+
+    this.projects.set(id, project);
+    this.persistState();
+    console.log(`  ✓ Novel pipeline created: "${title}" — ${steps.length} steps, ${chapters} chapters, ~${(chapters * wordsPerChapter).toLocaleString()} words target`);
+    return project;
+  }
+```
+### buildNovelPipelineContext
+```ts
+  private buildNovelPipelineContext(project: Project, step: ProjectStep): string {
+    let context = '';
+    // 过滤出已完成的步骤
+    const completed = project.steps.filter(s => s.status === 'completed' && s.result);
+    // 从已完成的步骤中找到传入的阶段
+    const getPhaseResults = (phase: string) =>
+      completed.filter(s => s.phase === phase);
+    // 根据最大值把文本截取
+    const truncate = (text: string, max: number) =>
+      text.length > max ? text.slice(0, max) + '\n\n[...truncated...]' : text;
+
+    switch (step.phase) {
+      case 'premise': {
+        // First premise step gets just the config; second gets first premise result
+        // 如果前提阶段第一个任务已完成，则取出第一个的结果传入上下文
+        const priorPremise = getPhaseResults('premise');
+        if (priorPremise.length > 0) {
+          context += `## Prior Premise Work\n\n${priorPremise.map(s => s.result).join('\n\n')}\n\n`;
+        }
+        break;
+      }
+
+      case 'bible': {
+        // Bible steps get the full premise
+        // 把前提完成结果传入上下文
+        const premiseResults = getPhaseResults('premise');
+        if (premiseResults.length > 0) {
+          context += `## Premise\n\n${premiseResults.map(s => s.result).join('\n\n')}\n\n`;
+        }
+        // Plus any prior bible steps
+        // 添加该步骤任务前的已完成的档案结果
+        const priorBible = getPhaseResults('bible').filter(s => s.id !== step.id);
+        if (priorBible.length > 0) {
+          context += `## Book Bible (so far)\n\n`;
+          for (const bs of priorBible) {
+            context += `### ${bs.label}\n${truncate(bs.result!, 1500)}\n\n`;
+          }
+        }
+        break;
+      }
+
+      case 'outline': {
+        // Outline gets premise + summarized bible
+        // 把前提完成结果传入上下文
+        const premiseResults = getPhaseResults('premise');
+        if (premiseResults.length > 0) {
+          context += `## Premise\n\n${truncate(premiseResults.map(s => s.result).join('\n\n'), 3000)}\n\n`;
+        }
+        // 把档案完成结果传入上下文
+        const bibleResults = getPhaseResults('bible');
+        if (bibleResults.length > 0) {
+          context += `## Book Bible\n\n`;
+          for (const bs of bibleResults) {
+            context += `### ${bs.label}\n${truncate(bs.result!, 1000)}\n\n`;
+          }
+        }
+        // Prior outline steps
+        // 添加该步骤任务前的已完成的大纲结果
+        const priorOutline = getPhaseResults('outline').filter(s => s.id !== step.id);
+        if (priorOutline.length > 0) {
+          context += `## Outline (so far)\n\n${priorOutline.map(s => s.result).join('\n\n')}\n\n`;
+        }
+        break;
+      }
+
+      case 'writing': {
+        // Writing steps get: premise (brief) + bible (summaries) + outline + last 2 chapters (sliding window)
+        // 把前提完成结果传入上下文
+        const premiseResults = getPhaseResults('premise');
+        if (premiseResults.length > 0) {
+          context += `## Premise\n\n${truncate(premiseResults.map(s => s.result).join('\n\n'), 1500)}\n\n`;
+        }
+        // 把档案完成结果传入上下文
+        const bibleResults = getPhaseResults('bible');
+        if (bibleResults.length > 0) {
+          context += `## Book Bible (key details)\n\n`;
+          for (const bs of bibleResults) {
+            context += `### ${bs.label}\n${truncate(bs.result!, 600)}\n\n`;
+          }
+        }
+        // Full outline
+        // 把大纲完成结果传入上下文
+        const outlineResults = getPhaseResults('outline');
+        if (outlineResults.length > 0) {
+          context += `## Outline\n\n${truncate(outlineResults.map(s => s.result).join('\n\n'), 4000)}\n\n`;
+        }
+        // Sliding window: last 2 completed chapter results
+        // 滑动窗口：把最近两章完成的结果传入上下文
+        const writtenChapters = getPhaseResults('writing');
+        if (writtenChapters.length > 0) {
+          const recent = writtenChapters.slice(-2);
+          context += `## Recent Chapters (for continuity)\n\n`;
+          for (const ch of recent) {
+            context += `### ${ch.label}\n${truncate(ch.result!, 2000)}\n\n`;
+          }
+        }
+        break;
+      }
+
+      case 'revision': {
+        // Revision gets: bible summaries + outline summary + all chapter summaries
+        // 修订内容包括：档案摘要 + 大纲概要 + 所有章节摘要
+        // 把档案完成结果传入上下文
+        const bibleResults = getPhaseResults('bible');
+        if (bibleResults.length > 0) {
+          context += `## Book Bible\n\n`;
+          for (const bs of bibleResults) {
+            context += `### ${bs.label}\n${truncate(bs.result!, 800)}\n\n`;
+          }
+        }
+        // 把大纲完成结果传入上下文
+        const outlineResults = getPhaseResults('outline');
+        if (outlineResults.length > 0) {
+          context += `## Outline\n\n${truncate(outlineResults.map(s => s.result).join('\n\n'), 3000)}\n\n`;
+        }
+        // Brief summaries of all chapters
+        const writtenChapters = getPhaseResults('writing');
+        if (writtenChapters.length > 0) {
+          context += `## Chapter Drafts (summaries)\n\n`;
+          for (const ch of writtenChapters) {
+            context += `### ${ch.label}\n${truncate(ch.result!, 500)}\n\n`;
+          }
+        }
+        break;
+      }
+
+      case 'assembly': {
+        // Assembly gets a brief overview of everything
+        const totalWords = getPhaseResults('writing').reduce((sum, s) => {
+          return sum + (s.result?.split(/\s+/).length || 0);
+        }, 0);
+        context += `## Pipeline Summary\n\n`;
+        context += `- Chapters written: ${getPhaseResults('writing').length}\n`;
+        context += `- Approximate total words: ${totalWords.toLocaleString()}\n`;
+        context += `- Revision steps completed: ${getPhaseResults('revision').length}\n\n`;
+        // Include consistency check results if available
+        const consistencyCheck = completed.find(s => s.label === 'Consistency check');
+        if (consistencyCheck?.result) {
+          context += `## Consistency Check Results\n\n${truncate(consistencyCheck.result, 3000)}\n\n`;
+        }
+        break;
+      }
+
+      default: {
+        // Fallback: include all prior results (truncated)
+        for (const cs of completed) {
+          context += `### ${cs.label}\n${truncate(cs.result!, 1000)}\n\n`;
+        }
+      }
+    }
+
+    return context;
+  }
+```
 ## HeartbeatService
 ### constructor 构造函数
 ```ts
@@ -2528,6 +2962,7 @@ getTemplates(): Array<{ type: ProjectType; label: string; description: string; s
     }
 
     // Book Production: uses dynamic chapter generation
+    // 如果是整书制作
     if (inferredType === 'book-production') {
       const project = engine.createBookProduction(title, description, config || context || {});
       applyProjectOptions(project);

@@ -44,47 +44,85 @@ TypeScript 是JavaScript的超集，主要功能是为 JavaScript 添加类型�
 
 ## `tsconfig.json`配置说明
 
-::: tip
+编译相关最容易混的三个选项：
 
-target 和module的区别
+| 选项 | 管什么 | 不管什么 |
+| :--: | :-- | :-- |
+| `target` | `class` / `async` / `?.` 等**语法**降到哪一版 JS | 不管 `import` 变不变 |
+| `module` | `import` / `export` **编译成什么形式** | 不管 `class` 会不会降级 |
+| `moduleResolution` | `import 'xxx'` **去哪找文件**（只影响解析与类型检查） | 不改变输出代码形态 |
 
-|   **维度**   |              **`target`**               |                       **`module`**                        |
-| :----------: | :-------------------------------------: | :-------------------------------------------------------: |
-| **核心功能** |    控制编译后的 JavaScript 语法版本     |                 控制模块化系统的实现方式                  |
-|  **默认值**  |                  `es3`                  | 根据 `target` 决定（如 `target=es6` 时默认 `module=es6`） |
-|  **关联性**  | 独立于 `module`，但某些值会触发默认关联 |           独立于 `target`，但需与运行时环境兼容           |
-| **典型场景** |       兼容旧浏览器或 Node.js 版本       |   匹配项目运行时模块系统（如 Node.js/CJS 或浏览器/ESM）   |
+一句话：`target` 管语法，`module` 管模块输出，`moduleResolution` 管怎么找模块。
 
-:::
+### target
+
+控制编译后的 JavaScript **语言版本**（语句级语法）。
+
+常见值：`ES5`、`ES2017`、`ES2020`、`ESNext` 等。
+
+例如源码有 `async/await`：
+
+- `target: ES5` → 降级成 `__awaiter` + generator
+- `target: ES2017` 及以上 → 保留 `async/await`
 
 ### module
 
-#### 作用
+控制 `import` / `export` **怎么转换**。
 
-1. **控制模块语法转换**
+- `CommonJS` → `require()` / `module.exports`（传统 Node）
+- `ES2015` / `ESNext` → 保留原生 `import` / `export`（浏览器 ESM 或交给打包器）
+- `NodeNext` → 按 Node 的 ESM/CJS 规则输出（常与 `"type": "module"` 配合）
 
-   `module` 选项决定编译器如何转换这些语法
+`module` 还会联动 `moduleResolution` 的默认值，但现代项目建议**显式配置** `moduleResolution`。
 
-   - 若设为 `ESNext`，保留原生 `import`/`export`（现代浏览器或打包工具适用）
+#### 同一份源码，组合效果不同
 
-   - 若设为 `CommonJS`，转换为 `require()` 和 `module.exports`（Node.js 环境适用）
+```ts
+import { readFile } from 'fs';
 
-2. **影响模块解析策略**
+export async function load(path: string) {
+  const data = await readFile(path);
+  return data.toString();
+}
+```
 
-   `module` 的值会联动 `moduleResolution` 的默认行为：
+| 配置 | 结果要点 |
+| :-- | :-- |
+| `target: ES5` + `module: CommonJS` | `async` 降级 + `require` / `exports` |
+| `target: ES2017` + `module: CommonJS` | `async` 保留 + `require` / `exports` |
+| `target: ES5` + `module: ES2015` | `async` 降级，但 `import` / `export` 仍在 |
+| `target: ES2020` + `module: ESNext` | 语法和模块几乎原样输出 |
 
-   - `module: "CommonJS"` → 默认 `moduleResolution: "node"`（Node.js 风格解析）
+要点：**改 `target` 不会把 `import` 变成 `require`，那是 `module` 的事。**
 
-   - `module: "ES2015"` → 默认 `moduleResolution: "classic"`（传统 TypeScript 解析）
+### moduleResolution
 
-#### **如何选择 `module` 值？**
+控制写 `import 'xxx'` 时，TypeScript **按什么规则解析路径**。不改输出代码，只影响「找不找得到模块」和类型是否正确。
 
-|     **环境/工具**     |   **推荐值**   |                         **说明**                          |
-| :-------------------: | :------------: | :-------------------------------------------------------: |
-|        Node.js        |   `CommonJS`   |        Node.js 原生支持 `require`/`module.exports`        |
-| 浏览器 + Webpack/Vite |    `ESNext`    |                打包工具会处理 ES 模块语法                 |
-|    浏览器直接运行     | `ES2015`/`ES6` | 现代浏览器支持原生 ES 模块（需 `<script type="module">`） |
-|     兼容多种环境      |     `UMD`      |             同时生成 CommonJS 和 AMD 支持代码             |
+| 值 | 行为 |
+| :-- | :-- |
+| `classic` | 老 TS 规则，几乎别用 |
+| `node`（又名 `node10`） | 传统 Node：`node_modules` + `package.json` 的 `main`/`types`；相对路径可不写扩展名；对 `exports` 支持不完整 |
+| `node16` / `nodenext` | 现代 Node：尊重 `"type"`、`exports`；ESM 下相对路径常需带扩展名（如 `./utils.js`） |
+| `bundler` | 给 Vite/Webpack 等：更宽松，允许无扩展名的 ESM import，并支持 `exports` |
+
+举例：`import { foo } from './utils'`
+
+- `classic`：不自动找 `./utils/index.ts`，也不走 `node_modules`
+- `node`：会找 `utils.ts` / `utils/index.ts` 等，第三方走 `node_modules`
+- `nodenext`：ESM 下往往要写成 `import { foo } from './utils.js'`（指向编译后的 `.js`，TS 映射到 `.ts`）
+- `bundler`：允许无扩展名，交给打包器解析
+
+### 怎么选（实用组合）
+
+| 场景 | 推荐配置 |
+| :-- | :-- |
+| Vite / Webpack 等前端项目 | `"module": "ESNext"`, `"moduleResolution": "bundler"` |
+| 现代 Node（原生 ESM） | `"module": "NodeNext"`, `"moduleResolution": "NodeNext"` |
+| 传统 Node CJS | `"module": "CommonJS"`, `"moduleResolution": "node"` |
+| 浏览器直接跑 ESM | `"module": "ES2015"` 或 `ESNext`（需 `<script type="module">`） |
+
+`target` 按你要兼容的运行时选即可（如 Node 18+ 可用 `ES2022`，前端交给打包器时常用 `ESNext`）。
 
 ## 类型分类
 

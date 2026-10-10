@@ -25,6 +25,7 @@ export default defineConfig({
           { text: "CSS", link: "/CSS" },
           { text: "DOM+JS", link: "/DOM+JS" },
           { text: "HR面以及待遇问题", link: "/HR面以及待遇问题" },
+          { text: "agent-part1", link:"ai-part1"}
         ],
       },
       {

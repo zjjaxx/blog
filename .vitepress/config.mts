@@ -116,8 +116,8 @@ export default defineConfig({
             link:"/z_bot",
           },
           {
-            text:"布林带",
-            link:"/boll"
+            text:"布林线",
+            link:"/布林线"
           }
         ],
       },

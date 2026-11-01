@@ -1537,3 +1537,1297 @@ categories: Category[];
 - **orphanedRowAction**：save 时数组里消失的子行 → nullify / delete / soft-delete / disable  
 - **@JoinColumn**：外键列（OneToOne 拥有方必写；ManyToOne 可省略）  
 - **@JoinTable**：多对多中间表，只写拥有方一侧  
+
+
+---
+
+## 实战：Document ↔ Content 一对一（共享主键）
+
+> 场景：知识库文档。元数据（标题、摘要、状态）和大正文拆两张表；列表不加载正文，详情再带正文。  
+> 对应项目：`rag-agent` 的 `DocumentEntity` / `ContentEntity`。
+
+### 一句话结论
+
+**一对一共享主键**：`content.id === document.id`；外键（`@JoinColumn`）放在 Content；Document 侧开 `cascade`；软删用 `deletedAt`；基类不要加 `@Entity()`。
+
+---
+
+### 正确写法（完整对照）
+
+```ts
+// base-entity.ts —— 抽象基类，不加 @Entity()
+export abstract class BaseEntity {
+  @CreateDateColumn({ name: 'created_at', type: 'timestamp' })
+  createdAt: Date;
+
+  @UpdateDateColumn({ name: 'updated_at', type: 'timestamp' })
+  updatedAt: Date;
+
+  @DeleteDateColumn({ name: 'deleted_at', type: 'timestamp', nullable: true })
+  deletedAt?: Date | null;
+}
+
+// document.entity.ts —— 元数据（轻）
+@Entity('kh_document')
+export class DocumentEntity extends BaseEntity {
+  @PrimaryColumn({ type: 'bigint', transformer: bigintTransformer })
+  id: string;
+
+  @Column({ type: 'varchar' })
+  title: string;
+
+  // 反向侧：有第二个参数；cascade 在「主」这边
+  @OneToOne(() => ContentEntity, (content) => content.document, {
+    cascade: true,
+  })
+  content?: Relation<ContentEntity>;
+
+  @Column({ type: 'varchar', nullable: true })
+  summary?: string | null;
+
+  @Column({ type: 'text', array: true, nullable: true })
+  tags?: string[] | null;
+
+  @Column({ name: 'word_count', type: 'int', default: 0 })
+  wordCount: number;
+}
+
+// content.entity.ts —— 正文（重），外键在这边
+@Entity('kh_document_content')
+export class ContentEntity extends BaseEntity {
+  @PrimaryColumn({ type: 'bigint', transformer: bigintTransformer })
+  id: string; // 与 Document.id 相同
+
+  @OneToOne(() => DocumentEntity, (document) => document.content, {
+    onDelete: 'CASCADE',
+  })
+  @JoinColumn({ name: 'id' }) // 外键列 = 本表 id，引用 document.id
+  document: Relation<DocumentEntity>;
+
+  @Column({ type: 'text' })
+  content: string;
+
+  @Column({ type: 'int', default: 1 })
+  version: number;
+}
+```
+
+库表形态：
+
+| kh_document | kh_document_content |
+| --- | --- |
+| id = 1001 | id = 1001（主键 **且** 外键 → document.id） |
+| title / summary / tags… | content / version |
+
+```ts
+// 创建：一次 save，两张表都写入（Document 侧 cascade）
+await docRepo.save({
+  id: '1001',
+  title: 'RAG 入门',
+  content: { id: '1001', content: '# 第一章…', version: 1 },
+});
+
+// 列表：不 join 正文
+await docRepo.find({ select: ['id', 'title', 'summary'] });
+
+// 详情：再带正文
+await docRepo.findOne({ where: { id: '1001' }, relations: ['content'] });
+```
+
+Nest 里两边都要 `forFeature`（开了 `autoLoadEntities` 时尤其重要）：
+
+```ts
+TypeOrmModule.forFeature([DocumentEntity, ContentEntity])
+```
+
+---
+
+### 软删除：`deletedAt` 还是 `deleted` 布尔？
+
+| | `deletedAt`（`@DeleteDateColumn`） | `deleted: boolean` |
+| --- | --- | --- |
+| TypeORM | 原生 `softRemove` / `recover` / `withDeleted` | 要自己到处写 `WHERE deleted = false` |
+| 信息量 | 是否删 + **何时删** | 只有是否删 |
+| 恢复 | 置 `NULL` | 改回 `false`，丢了删除时间 |
+
+**优先 `deletedAt`。** 布尔只在「永远不关心删除时间、也不用 TypeORM 软删 API」时更省事。
+
+```ts
+await repo.softRemove(doc);           // 写入 deleted_at
+await repo.find();                    // 默认看不到已删
+await repo.find({ withDeleted: true }); // 显式查已删
+await repo.recover(doc);              // deleted_at = null
+```
+
+---
+
+### 基类：为啥不要 `@Entity()`，要用 `abstract`
+
+```ts
+// ❌ 基类加了 @Entity() → TypeORM 可能多建一张无意义的 base_entity 表
+@Entity()
+export class BaseEntity { ... }
+
+// ✅ 只复用字段，子类各自加 @Entity
+export abstract class BaseEntity { ... }
+```
+
+| | 有 `@Entity()` 的基类 | `abstract` 无 `@Entity()` |
+| --- | --- | --- |
+| 结果 | 可能多一张空表 | 只有业务表 |
+| 语义 | 「可独立持久化」 | 「只能被继承」 |
+
+`abstract` 还能防止误写 `new BaseEntity()` / `repo.save(base)`。
+
+---
+
+### 常见错误 1：把 `@OneToOne` 挂在主键 `id` 上
+
+```ts
+// ❌ 错：主键列和关系叠在同一属性
+@PrimaryColumn(...)
+@OneToOne(() => DocumentEntity, ...)
+id: string;
+
+// ✅ 对：主键是列，关系是对象引用，分开
+@PrimaryColumn(...)
+id: string;
+
+@OneToOne(() => DocumentEntity, (d) => d.content)
+@JoinColumn({ name: 'id' })
+document: Relation<DocumentEntity>;
+```
+
+**为啥：** TypeORM 里「列」和「关系」是两件事。
+
+```ts
+content.id              // "1001"（字符串）
+content.document.title  // "RAG 入门"（导航到另一张表）
+```
+
+叠在一起时，`id` 到底是字符串还是 Document？语义崩了，映射也会乱。
+
+---
+
+### `@OneToOne` 两个函数参数是啥意思
+
+```ts
+@OneToOne(
+  () => DocumentEntity,              // ① 连谁
+  (document) => document.content,    // ② 对面用哪个属性指回我
+  { onDelete: 'CASCADE' },           // ③ 选项（可选）
+)
+```
+
+#### ① `() => DocumentEntity`：目标实体
+
+写成函数（而不是直接写类名）是为了**避免循环 import** 时模块还是 `undefined`：
+
+```ts
+// content → import Document
+// document → import Content
+```
+
+箭头函数把取值推迟到「真正用到关系时」。
+
+#### ② `(document) => document.content`：反向属性
+
+告诉 TypeORM：Document 那一侧用哪个字段指回 Content。两边要配对：
+
+```
+Content.document  ←→  Document.content
+```
+
+```ts
+// Content 侧
+@OneToOne(() => DocumentEntity, (document) => document.content)
+
+// Document 侧
+@OneToOne(() => ContentEntity, (content) => content.document)
+```
+
+写成 `(document) => document.title` 就错了——`title` 不是关系属性。
+
+---
+
+### 省略第二个参数 = 单向关系（举例）
+
+**双向（有第 2 个参数）——两边都能导航：**
+
+```ts
+const doc = await docRepo.findOne({
+  where: { id: '1001' },
+  relations: ['content'],
+});
+doc.content.content; // "# 第一章"
+
+const content = await contentRepo.findOne({
+  where: { id: '1001' },
+  relations: ['document'],
+});
+content.document.title; // "RAG 入门"
+```
+
+**单向（省略第 2 个参数，且 Document 上没有 `content` 字段）：**
+
+```ts
+// Content 只写第一个参数
+@OneToOne(() => DocumentEntity)
+@JoinColumn({ name: 'id' })
+document: Relation<DocumentEntity>;
+
+// Document —— 没有 content 关系字段
+```
+
+| 操作 | 双向 | 单向 |
+| --- | --- | --- |
+| `content.document` | ✅ | ✅（关系在 Content 侧） |
+| `document.content` | ✅ | ❌ 没有这个属性 |
+| `docRepo.find({ relations: ['content'] })` | ✅ | ❌ |
+| `save({ title, content: {...} })` cascade | ✅ 可配 | ❌ Document 侧没法级联正文 |
+
+单向时想拿正文只能手动再查：
+
+```ts
+const doc = await docRepo.findOneBy({ id: '1001' });
+const content = await contentRepo.findOneBy({ id: doc.id });
+```
+
+**数据库外键还在**（`JoinColumn` 决定），只是 ORM 不再帮你从 Document 导航到 Content。
+
+知识库两边都要用（详情带正文、创建时 cascade），所以做成**双向**，第二个参数要保留。
+
+---
+
+### `@JoinColumn({ name: 'id' })` 参数含义
+
+`@JoinColumn` 声明：**外键在我这边这张表的哪一列，指向对方哪一列。**
+
+```ts
+@JoinColumn({
+  name: 'id',                 // 本表（content）的外键列名
+  referencedColumnName: 'id', // 对方表被引用的列（默认=对方主键，可省略）
+})
+```
+
+只写 `{ name: 'id' }` 时，等价于引用 Document 的主键 `id`。
+
+**注意：`name` 指的是本表列名，不是对方表列名。**
+
+#### 共享主键 vs 独立外键列
+
+```ts
+// 共享主键（你们现在）：一列身兼主键 + 外键
+@JoinColumn({ name: 'id' })
+// content.id = 1001，document.id = 1001
+
+// 独立外键：content 自己有主键，再另加 document_id
+@PrimaryColumn()
+id: string; // 比如 9001
+
+@JoinColumn({ name: 'document_id' })
+document: DocumentEntity;
+// content.id=9001, content.document_id=1001, document.id=1001
+```
+
+---
+
+### 为啥 `@JoinColumn` 放在 Content，不放 Document
+
+`@JoinColumn` 放哪一侧 = **外键物理存在哪张表**。
+
+| 表 | JoinColumn 在 Content 时 |
+| --- | --- |
+| `kh_document` | 没有指向 content 的列（列表表更干净） |
+| `kh_document_content` | `id` → `kh_document.id` |
+
+**好处：**
+
+1. **列表更轻**：列表只查 Document，不碰大正文表。  
+2. **共享主键只能这样**：`content.id === document.id` 时，外键必须落在 Content 的 `id`。  
+3. **删文档好级联**：`onDelete: 'CASCADE'` → 删 document 1001，自动删 content 1001，无孤儿正文。  
+4. **和业务主从一致**：文档是主、正文是从；外键在从属表 = 子表引用父表。
+
+若放到 Document（`content_id`）：
+
+| document.id | document.content_id | content.id |
+| --- | --- | --- |
+| 1001 | 9001 | 9001 |
+
+能工作，但 Document 多一列、两套 ID，适合「Content 先存在、Document 再引用」——和「先有文档再挂正文」相反。
+
+---
+
+### `cascade` 放哪边 / 和 `onDelete` 的区别
+
+| | `cascade: true`（ORM） | `onDelete: 'CASCADE'`（数据库 FK） |
+| --- | --- | --- |
+| 发生时机 | `repository.save(父)` 时 | `DELETE` 父行时 |
+| 谁执行 | TypeORM | 数据库约束 |
+| 你们放哪 | **Document**（保存文档顺带存正文） | **Content**（删文档顺带删正文） |
+
+```ts
+// Document：业务入口，cascade 保存
+@OneToOne(() => ContentEntity, (c) => c.document, { cascade: true })
+content?: Relation<ContentEntity>;
+
+// Content：外键侧，库级连删
+@OneToOne(() => DocumentEntity, (d) => d.content, { onDelete: 'CASCADE' })
+@JoinColumn({ name: 'id' })
+document: Relation<DocumentEntity>;
+```
+
+**别把 cascade 放反**：不应是「保存正文时顺便创建文档」。
+
+---
+
+
+### 记忆口诀（Document / Content）
+
+- **拆表**：元数据轻表 + 正文重表；列表不 join 正文  
+- **共享主键**：`content.id === document.id`；`@JoinColumn` 在 Content  
+- **`@OneToOne` 两参数**：① 连谁 ② 对面哪个属性指回来；省略 ② = 单向  
+- **别把关系挂在 `id` 上**：主键是列，关系是对象  
+- **cascade 在主（Document）**；**onDelete CASCADE 在外键侧（Content）**  
+- **软删用 `deletedAt`**；基类 `abstract`、**不加 `@Entity()`**  
+
+---
+
+## QueryBuilder：用链式 API 拼 SQL
+
+> 参考：[Select using Query Builder](https://typeorm.io/docs/query-builder/select-query-builder)
+
+### 一句话结论
+
+**QueryBuilder = 用方法链式调用拼出 SQL**，执行后自动映射成实体。  
+简单 CRUD 用 `find` / `save`；复杂条件、JOIN、批量写、自定义 SQL 片段时用 QueryBuilder。
+
+文档说「有 5 种不同 QueryBuilder 类型」——中文机翻有时写成「产品」，其实就是 **5 种 Builder**，对应 5 类 SQL：
+
+| 类型 | 对应 SQL | 典型结尾 |
+| --- | --- | --- |
+| `SelectQueryBuilder` | `SELECT` | `getOne()` / `getMany()` / `getRawMany()` |
+| `InsertQueryBuilder` | `INSERT` | `execute()` |
+| `UpdateQueryBuilder` | `UPDATE` | `execute()` |
+| `DeleteQueryBuilder` | `DELETE` | `execute()` |
+| `RelationQueryBuilder` | 关系操作（加/删关联、加载关联） | `loadMany()` / `add()` / `remove()` 等 |
+
+`.select()` / `.insert()` / `.update()` / `.delete()` / `.relation()` 会**切换** Builder 类型，得到新实例。
+
+---
+
+### 先搞懂：它到底在干嘛
+
+下面这段：
+
+```ts
+const firstUser = await dataSource
+  .getRepository(User)
+  .createQueryBuilder('user')
+  .where('user.id = :id', { id: 1 })
+  .getOne();
+```
+
+TypeORM 会拼出类似：
+
+```sql
+SELECT
+  user.id AS user_id,
+  user.firstName AS user_firstName,
+  user.lastName AS user_lastName
+FROM users user
+WHERE user.id = 1
+```
+
+然后把行映射成：
+
+```ts
+User { id: 1, firstName: 'Timber', lastName: 'Saw' }
+```
+
+要点：
+
+1. **`'user'`** 是表别名（alias），后面 `where` / `orderBy` 都写 `user.xxx`  
+2. **`:id`** 是命名参数，第二个对象 `{ id: 1 }` 填值——防 SQL 注入，也比拼字符串清晰  
+3. **同一次查询里参数名不能重复乱用**：两个条件都写 `:id` 会打架，应写成 `:sheepId` / `:cowId`
+
+---
+
+### 怎么创建 QueryBuilder（三种入口）
+
+```ts
+// ① DataSource：最「裸」，要自己 .select().from()
+const user = await dataSource
+  .createQueryBuilder()
+  .select('user')
+  .from(User, 'user')
+  .where('user.id = :id', { id: 1 })
+  .getOne();
+
+// ② EntityManager：创建时就指定实体 + 别名
+const user2 = await dataSource.manager
+  .createQueryBuilder(User, 'user')
+  .where('user.id = :id', { id: 1 })
+  .getOne();
+
+// ③ Repository（Nest 里最常见）：仓库已绑定实体，只传别名
+const user3 = await dataSource
+  .getRepository(User)
+  .createQueryBuilder('user')
+  .where('user.id = :id', { id: 1 })
+  .getOne();
+```
+
+Nest 里通常是：
+
+```ts
+@InjectRepository(User)
+private readonly userRepo: Repository<User>;
+
+// ...
+await this.userRepo.createQueryBuilder('user').where(...).getMany();
+```
+
+三种最终 SQL 一样；日常优先 **Repository**，少写 `.from(User, 'user')`。
+
+---
+
+### 场景 1：`SelectQueryBuilder` — 查
+
+**什么时候用：** 条件多、要 JOIN、要分页排序、`find` 写着别扭时。
+
+```ts
+const user = await dataSource
+  .createQueryBuilder()
+  .select('user')              // SELECT 哪个别名对应的实体列
+  .from(User, 'user')          // FROM users AS user
+  .where('user.id = :id', { id: 1 })
+  .getOne();                   // 执行，期望 0~1 条 → User | null
+```
+
+逐步拆开：
+
+| 调用 | 含义 |
+| --- | --- |
+| `createQueryBuilder()` | 开一个 Builder |
+| `.select('user')` | 选出别名 `user` 的列（映射成 `User`） |
+| `.from(User, 'user')` | 从 `User` 实体对应表查，别名 `user` |
+| `.where('user.id = :id', { id: 1 })` | `WHERE`，`:id` 用参数对象填充 |
+| `.getOne()` | 跑查询，取一条实体 |
+
+#### 常见取结果方式
+
+Select 有两类结果：**实体**（映射成 `User`）和 **原始结果**（数据库原样吐出来的列/聚合）。
+
+| 方法 | 返回 | 没数据时 | 什么时候用 |
+| --- | --- | --- | --- |
+| `getOne()` | `User \| null` | `null` | 查单条，允许不存在 |
+| `getOneOrFail()` | `User` | 抛 `EntityNotFoundError` | 业务上「必须有这条」 |
+| `getMany()` | `User[]` | `[]` | 查列表 |
+| `getRawOne()` | 普通对象 \| `undefined` | 无行 | 聚合、自定义 SELECT 别名 |
+| `getRawMany()` | 普通对象数组 | `[]` | 同上，多行 |
+
+```ts
+const qb = dataSource.getRepository(User).createQueryBuilder('user');
+
+await qb.where('user.id = :id', { id: 1 }).getOne();
+// → User | null
+
+await qb.where('user.id = :id', { id: 1 }).getOneOrFail();
+// → 没有就抛 EntityNotFoundError
+
+await qb.getMany();
+// → User[]（不加 where = 全表，生产慎用）
+
+await qb
+  .where('user.isActive = :a', { a: true })
+  .skip(20)   // OFFSET
+  .take(10)   // LIMIT
+  .getMany();
+
+const { entities, raw } = await qb.getRawAndEntities();
+// entities = 映射后的实体；raw = 原始行（算聚合、额外列时有用）
+
+// 聚合 / 自定义列 → 原始结果（SUM/COUNT 等见文末「SQL 常用语法」）
+await qb.select('COUNT(user.id)', 'cnt').getRawOne();
+// → { cnt: '42' }
+```
+
+`.where(...)` / `.select('SUM(...)', '别名')` 里写的是 **SQL 片段**，不是 TypeORM 发明的语法。`OR`、`AND`、`SUM`、`LIKE`、`IN` 等单独成章，见文末 **「SQL 常用语法（按场景）」**。
+
+#### 稍复杂一点：多条件 + JOIN
+
+```ts
+const list = await dataSource
+  .getRepository(User)
+  .createQueryBuilder('user')
+  .leftJoinAndSelect('user.photos', 'photo') // 左连并选出 photos
+  .where('user.isActive = :active', { active: true })
+  .andWhere('user.lastName = :last', { last: 'Saw' })
+  .orderBy('user.id', 'DESC')
+  .getMany();
+```
+
+等价思路：`SELECT user.*, photo.* FROM users user LEFT JOIN photos photo ON ... WHERE ... ORDER BY ...`
+
+**和 `find` 对比：**
+
+```ts
+// 简单 → find 够用
+await userRepo.findOne({ where: { id: 1 }, relations: ['photos'] });
+
+// 复杂动态条件 / 自定义 ON / 子查询 → QueryBuilder 更合适
+```
+
+---
+
+### 场景 2：`InsertQueryBuilder` — 插
+
+**什么时候用：** 批量插入、要写 `OR IGNORE` / `ON CONFLICT`、或插入后要 `returning`（Postgres）时。比循环 `save` 轻。
+
+```ts
+await dataSource
+  .createQueryBuilder()
+  .insert()                 // 切到 InsertQueryBuilder
+  .into(User)               // INSERT INTO users
+  .values([
+    { firstName: 'Timber', lastName: 'Saw' },
+    { firstName: 'Phantom', lastName: 'Lancer' },
+  ])
+  .execute();               // 执行；插入一般不用 getOne
+```
+
+逐步拆开：
+
+| 调用 | 含义 |
+| --- | --- |
+| `.insert()` | 声明这是 INSERT |
+| `.into(User)` | 插入哪张表（实体） |
+| `.values([...])` | 一行对象 = 一行记录；数组 = 批量 |
+| `.execute()` | 真正发 SQL，返回 `InsertResult`（含 `identifiers` / `raw` 等） |
+
+等价 SQL：
+
+```sql
+INSERT INTO users (firstName, lastName) VALUES
+  ('Timber', 'Saw'),
+  ('Phantom', 'Lancer');
+```
+
+#### 只插一行 / 忽略部分列
+
+```ts
+await dataSource
+  .createQueryBuilder()
+  .insert()
+  .into(User)
+  .values({ firstName: 'Timber', lastName: 'Saw' }) // 单个对象也行
+  .execute();
+```
+
+#### 和 `repository.save` / `insert` 对比
+
+| 写法 | 特点 |
+| --- | --- |
+| `repo.save(entity)` | 会跑 listener / subscriber；有 id 可能变 UPDATE；较重 |
+| `repo.insert(data)` | 偏底层插入，不加载实体 |
+| `createQueryBuilder().insert()...` | 和 `repo.insert` 同类，链式可加更多 SQL 选项 |
+
+知识库批量灌文档元数据、导入脚本，优先 `insert` QueryBuilder / `repo.insert`，别对几千行逐个 `save`。
+
+---
+
+### 场景 3：`UpdateQueryBuilder` — 改
+
+**什么时候用：** 按条件批量改字段，不必先 `find` 再 `save`。
+
+```ts
+await dataSource
+  .createQueryBuilder()
+  .update(User)                                    // UPDATE users
+  .set({ firstName: 'Timber', lastName: 'Saw' })   // SET ...
+  .where('id = :id', { id: 1 })
+  .execute();
+```
+
+逐步拆开：
+
+| 调用 | 含义 |
+| --- | --- |
+| `.update(User)` | 更新哪张表 |
+| `.set({ ... })` | 要改的列；也可写 `() => "firstName = firstName || '!'"` 这类表达式 |
+| `.where(...)` | 更新范围；**没 where 会全表更新，危险** |
+| `.execute()` | 返回 `UpdateResult`（含 `affected` 等） |
+
+等价 SQL：
+
+```sql
+UPDATE users SET firstName = 'Timber', lastName = 'Saw' WHERE id = 1
+```
+
+#### 批量场景举例
+
+```ts
+// 把所有 inactive 用户标记为归档名
+await dataSource
+  .getRepository(User)
+  .createQueryBuilder()
+  .update(User)
+  .set({ lastName: 'Archived' })
+  .where('isActive = :active', { active: false })
+  .execute();
+```
+
+**注意：** 这条路径通常**不会**自动更新 `@UpdateDateColumn`（取决于版本/写法），也不会触发实体级 listener 的完整生命周期。需要这些副作用时，仍用 `find` + `save`。
+
+---
+
+### 场景 4：`DeleteQueryBuilder` — 硬删
+
+**什么时候用：** 按条件物理删除行。软删（`deletedAt`）一般用 `softDelete` / `softRemove`，不是这个。
+
+```ts
+await dataSource
+  .createQueryBuilder()
+  .delete()
+  .from(User)
+  .where('id = :id', { id: 1 })
+  .execute();
+```
+
+| 调用 | 含义 |
+| --- | --- |
+| `.delete()` | 声明 DELETE |
+| `.from(User)` | 从哪张表删 |
+| `.where(...)` | 删除范围；**没 where = 删光整表** |
+| `.execute()` | 返回 `DeleteResult` |
+
+等价 SQL：
+
+```sql
+DELETE FROM users WHERE id = 1
+```
+
+#### 条件批量删举例
+
+```ts
+await dataSource
+  .getRepository(User)
+  .createQueryBuilder()
+  .delete()
+  .from(User)
+  .where('isActive = :active', { active: false })
+  .andWhere('updatedAt < :deadline', { deadline: new Date('2020-01-01') })
+  .execute();
+```
+
+和 Document / Content 的关系：库上配了 `onDelete: 'CASCADE'` 时，硬删 Document 会由**数据库**顺带删 Content；这和 ORM 的 `cascade: true`（管 save）不是一回事。
+
+---
+
+### 场景 5：`RelationQueryBuilder` — 只管「谁连着谁」
+
+> 官方专题：[Working with Relations](https://typeorm.io/docs/query-builder/relational-query-builder)
+
+#### 先分清两件事
+
+数据库里其实有两类数据：
+
+| | 实体自己的字段 | 关系（连线） |
+| --- | --- | --- |
+| 例子 | `post.title`、`user.name` | 「这篇 post 属于哪些 category」 |
+| 落在哪 | `post` / `user` 表自己的列 | **外键列**，或**多对多中间表**的一行 |
+| 前四种 Builder | Select/Insert/Update/Delete 主要动实体行 | — |
+| 第五种 | **不动** title / name | **只改连线** |
+
+`RelationQueryBuilder` 的全部意义就一句话：
+
+> **别把两边实体整包加载再 `save`，只告诉数据库：A 和 B 连上 / 断开。**
+
+#### 生活类比
+
+- `UpdateQueryBuilder`：改身份证上的姓名（改本人字段）  
+- `RelationQueryBuilder`：改通讯录里「张三存了李四的号码」（改**联系**，人不删）
+
+多对多时，中间表就是通讯录：
+
+```text
+post 表          post_categories_category（中间表）          category 表
+---------        --------------------------------           -----------
+id=1  标题A      postId=1, categoryId=10                     id=10  前端
+id=2  标题B      postId=1, categoryId=20                     id=20  后端
+                 postId=2, categoryId=10                     id=30  数据库
+```
+
+`.add(30)` = 往中间表再插一行 `(1, 30)`  
+`.remove(20)` = 删掉中间表 `(1, 20)`  
+**不会**删掉 `category` 里 id=20 那一行，只是 post 1 不再挂「后端」这个标签。
+
+#### 为啥不用普通 `save`？（官方核心动机）
+
+假设一篇文章已经挂了 **1 万个**分类，你还想再挂一个：
+
+```ts
+// ❌ 笨办法：先整包加载，再 push，再 save
+const post = await postRepo.findOne({
+  where: { id: 1 },
+  relations: { categories: true }, // 一次拉 10000 条进来内存
+});
+post.categories.push(newCategory);
+await postRepo.save(post); // 又要把整坨关联写回去 → 又慢又危险
+```
+
+```ts
+// ✅ RelationQueryBuilder：只插中间表一行，两边实体都不用加载
+await dataSource
+  .createQueryBuilder()
+  .relation(Post, 'categories') // 操作 Post 上的 categories 这段关系
+  .of(1)                        // 哪篇文章（id=1，也可以传 post 对象）
+  .add(3);                      // 挂上 category id=3（也可以传实体）
+```
+
+等价于数据库只做类似：
+
+```sql
+INSERT INTO post_categories_category (postId, categoryId) VALUES (1, 3);
+```
+
+这就是文档说的：*bind entities without loading* —— **不加载也能绑上**。
+
+#### 句式怎么读
+
+```ts
+.await dataSource
+  .createQueryBuilder()
+  .relation(Post, 'categories') // ① 谁身上的哪段关系
+  .of(postOrId)                 // ② 关系「这一侧」是谁
+  .add(categoryOrId)            // ③ 对「另一侧」做什么
+```
+
+人话：**「给 Post#1 的 categories，加上 Category#3」**。
+
+| 调用 | 含义 |
+| --- | --- |
+| `.relation(Post, 'categories')` | 看 `Post` 实体上叫 `categories` 的那条 `@ManyToMany` / `@OneToMany` … |
+| `.of(1)` / `.of(post)` | 主体是哪一个 Post（传 id 或实体都行） |
+| `.add(3)` / `.add(category)` | 多端：多挂一个（可数组 `.add([2, 3])`） |
+| `.remove(3)` | 多端：摘掉关联（**删连线，不删 category 行**） |
+| `.set(3)` / `.set(null)` | 单端（一对一 / 多对一）：改成指向谁，或清空 |
+| `.loadMany()` / `.loadOne()` | 只把这段关系加载出来 |
+
+#### 多对多 / 一对多：用 `add` / `remove`
+
+```ts
+// 给文章 1 挂上分类 2、3
+await dataSource.createQueryBuilder()
+  .relation(Post, 'categories')
+  .of(1)
+  .add([2, 3]);
+
+// 从文章 1 上摘掉分类 2（中间表少一行；分类 2 本身还在）
+await dataSource.createQueryBuilder()
+  .relation(Post, 'categories')
+  .of(1)
+  .remove(2);
+```
+
+#### 一对一 / 多对一：用 `set`（不是 add）
+
+「一篇文章只有一个作者」这种，另一侧是**单个**，不能 add 一堆：
+
+```ts
+// 把 post#1 的作者设为 user#5（改的是 post.userId 这类外键）
+await dataSource.createQueryBuilder()
+  .relation(Post, 'author')
+  .of(1)
+  .set(5);
+
+// 清空作者（外键置 null，前提是列允许 null）
+await dataSource.createQueryBuilder()
+  .relation(Post, 'author')
+  .of(1)
+  .set(null);
+```
+
+#### 只加载某一段关系
+
+不一定非要 `find({ relations: [...] })` 一次全带：
+
+```ts
+const post = await postRepo.findOneBy({ id: 1 });
+
+// 单独把 categories 装上
+post.categories = await dataSource.createQueryBuilder()
+  .relation(Post, 'categories')
+  .of(post)
+  .loadMany();
+
+// 单独把 author 装上
+post.author = await dataSource.createQueryBuilder()
+  .relation(Post, 'author')
+  .of(post)
+  .loadOne();
+```
+
+和 `SelectQueryBuilder` + `leftJoinAndSelect` 的差别：Select 是「查主表顺带 JOIN」；这里是「已知主实体，再去拉它的某一段关系」。
+
+#### 和 Document ↔ Content 怎么对应（帮助建立直觉）
+
+你们知识库是一对一共享主键，日常创建多用 `cascade` + `save`，**不一定非要用** RelationQueryBuilder。  
+但若只想表达「把 content 绑到 document」或「解绑」，语义上就是：
+
+```ts
+// 一对一 → set / loadOne（示意）
+await dataSource.createQueryBuilder()
+  .relation(DocumentEntity, 'content')
+  .of(documentId)
+  .set(contentId); // 或 set(null) 解绑（视外键可否为空）
+```
+
+多对多标签、文章分类、用户角色 —— 才是 RelationQueryBuilder **最香**的场景。
+
+#### 什么时候该用 / 不该用
+
+| 场景 | 建议 |
+| --- | --- |
+| 给已有文章再挂几个标签；文章已有海量标签 | ✅ `relation().of().add()` |
+| 从角色里摘掉某个权限 | ✅ `remove` |
+| 改文章标题、正文 | ❌ 用 Update / `save`，不是 Relation |
+| 新建文章并顺便带上分类（小数据） | `save` + cascade 也行，更直观 |
+| Document/Content 创建整包 | 继续 `cascade: true` 的 `save` 即可 |
+
+**一句话记住：**  
+前四种改的是**表里的行/列**；第五种改的是**行与行之间的连线**（外键或中间表）。
+
+---
+
+### 五种对照 + 怎么选
+
+| 你想做的事 | 用哪个 | 结尾方法 |
+| --- | --- | --- |
+| 按条件查列表 / 详情 / 分页 | `Select` | `getMany` / `getOne` |
+| 批量插入、导入 | `Insert` | `execute` |
+| 批量改某个字段 | `Update` | `execute` |
+| 按条件硬删 | `Delete` | `execute` |
+| 只改「谁和谁有关联」 | `Relation` | `add` / `remove` / `loadMany` |
+
+```ts
+// 切换类型会得到新 Builder（和普通 .where 链式不同）
+dataSource.createQueryBuilder().select('user').from(User, 'user'); // Select
+dataSource.createQueryBuilder().insert().into(User);               // Insert
+dataSource.createQueryBuilder().update(User);                      // Update
+dataSource.createQueryBuilder().delete().from(User);               // Delete
+dataSource.createQueryBuilder().relation(User, 'photos');          // Relation
+```
+
+**选型口诀：**
+
+- 单条读写、逻辑简单 → `repo.find*` / `save`  
+- SQL 已经在脑子里成形、条件很动态 → `SelectQueryBuilder`  
+- 大批量写、少副作用 → `insert` / `update` / `delete` QueryBuilder  
+- 只维护关联边 → `RelationQueryBuilder`  
+
+### 记忆口诀（QueryBuilder）
+
+- **Builder = 拼 SQL 的积木**；五种对应查 / 插 / 改 / 删 / 关系  
+- **别名**贯穿始终：`createQueryBuilder('user')` → 到处写 `user.xxx`  
+- **`:参数` + 对象**，同查询里参数名别撞车  
+- **读用 get\***，**写用 execute**  
+- **update/delete 必写 where**，不然全表遭殃  
+- Nest 里优先 `repo.createQueryBuilder('alias')`  
+
+---
+
+## SQL 常用语法（按场景）
+
+> 和 QueryBuilder **分开记**：下面这些是标准 SQL；TypeORM / QueryBuilder 只是把字符串拼进语句。  
+> 会 SQL，读 `.where('...')` / `.select('SUM(...)')` 才不懵。
+
+### 一句话结论
+
+| 你在业务里想说 | SQL 里常用 |
+| --- | --- |
+| 同时满足 / 满足其一 | `AND` / `OR` |
+| 等于、大于、区间、一批 id | `=` `>` `BETWEEN` `IN` |
+| 模糊搜名字 | `LIKE` |
+| 字段为空 | `IS NULL` |
+| 有多少、加总、平均、最大最小 | `COUNT` `SUM` `AVG` `MAX` `MIN` |
+| 按组统计后再过滤 | `GROUP BY` + `HAVING` |
+| 排序、翻页 | `ORDER BY` + `LIMIT`/`OFFSET` |
+
+下面举例默认用 QueryBuilder 写法（和笔记其它处一致）；换成手写 SQL 也一样。
+
+约定别名：`createQueryBuilder('user')` → 条件里写 `user.xxx`。
+
+---
+
+### 场景 1：多个条件要「同时成立」→ `AND`
+
+**业务：** 活跃、且姓 Saw。
+
+```sql
+WHERE user.isActive = true AND user.lastName = 'Saw'
+```
+
+```ts
+await userRepo
+  .createQueryBuilder('user')
+  .where('user.isActive = :active', { active: true })
+  .andWhere('user.lastName = :last', { last: 'Saw' })
+  .getMany();
+```
+
+一条字符串里写也行：`.where('user.isActive = :a AND user.lastName = :last', { a: true, last: 'Saw' })`。
+
+---
+
+### 场景 2：多个条件「满足一个就行」→ `OR`
+
+**业务：** id 是 1，**或者**名字叫 Timber（登录可用 id / 用户名任一种）。
+
+```sql
+WHERE user.id = 1 OR user.name = 'Timber'
+```
+
+```ts
+const timber = await userRepo
+  .createQueryBuilder('user')
+  .where('user.id = :id OR user.name = :name', { id: 1, name: 'Timber' })
+  .getOneOrFail(); // 没有就抛 EntityNotFoundError
+```
+
+链式写法（条件会动态加减时更清晰）：
+
+```ts
+.where('user.id = :id', { id: 1 })
+.orWhere('user.name = :name', { name: 'Timber' })
+```
+
+假数据：
+
+| id | name |
+| --- | --- |
+| 1 | Alice |
+| 2 | Timber |
+
+`id=1 OR name='Timber'` → 两行都命中。`getOne` 只拿其中一条——要唯一结果就收紧条件。
+
+**优先级：** `AND` 比 `OR` 绑得紧。混用时加括号：
+
+```ts
+// 管理员，或者（活跃且成年）
+.where(
+  'user.role = :role OR (user.isActive = :active AND user.age > :age)',
+  { role: 'admin', active: true, age: 18 },
+)
+```
+
+还有 `NOT`：取反，例如 `.where('NOT user.isActive = :a', { a: true })`，更常见是直接 `user.isActive = false`。
+
+---
+
+### 场景 3：比较大小、不等 → `=` `<>` `>` `>=` `<` `<=`
+
+**业务：** 积分不低于 100；排除某个状态。
+
+```ts
+// 积分 >= 100
+.where('user.score >= :min', { min: 100 })
+
+// 不等于（也有人写 !=，多数库两者都行）
+.where('user.status <> :s', { s: 'banned' })
+
+// 创建时间早于某天
+.where('user.createdAt < :deadline', { deadline: new Date('2024-01-01') })
+```
+
+| 符号 | 含义 |
+| --- | --- |
+| `=` | 等于 |
+| `<>` / `!=` | 不等于 |
+| `>` `>=` `<` `<=` | 大于 / 大于等于 / 小于 / 小于等于 |
+
+---
+
+### 场景 4：落在区间里 → `BETWEEN`
+
+**业务：** 年龄 18～30；订单金额 100～500。
+
+```sql
+WHERE user.age BETWEEN 18 AND 30
+-- 等价于 age >= 18 AND age <= 30（一般含两端）
+```
+
+```ts
+.where('user.age BETWEEN :min AND :max', { min: 18, max: 30 })
+
+.where('order.amount BETWEEN :lo AND :hi', { lo: 100, hi: 500 })
+```
+
+---
+
+### 场景 5：匹配一批值 → `IN` / `NOT IN`
+
+**业务：** id 在 `[1, 2, 5]` 里；角色不是 guest/banned。
+
+```sql
+WHERE user.id IN (1, 2, 5)
+WHERE user.role NOT IN ('guest', 'banned')
+```
+
+```ts
+.where('user.id IN (:...ids)', { ids: [1, 2, 5] })
+// TypeORM 的 :...ids 会展开成多个参数，别自己拼 "1,2,5" 字符串
+
+.where('user.role NOT IN (:...roles)', { roles: ['guest', 'banned'] })
+```
+
+批量「按主键列表拉实体」几乎必用 `IN`。
+
+---
+
+### 场景 6：模糊搜索 → `LIKE`
+
+**业务：** 名字包含 `Tim`；邮箱以 `@gmail.com` 结尾。
+
+```sql
+WHERE user.name LIKE '%Tim%'      -- 包含
+WHERE user.email LIKE '%@gmail.com' -- 后缀
+WHERE user.name LIKE 'Tim%'       -- 前缀（更容易走索引）
+```
+
+通配符：`%` = 任意多字符；`_` = 刚好一个字符。
+
+```ts
+.where('user.name LIKE :kw', { kw: '%Tim%' })
+.where('user.email LIKE :suffix', { suffix: '%@gmail.com' })
+```
+
+Postgres 大小写不敏感可用 `ILIKE`（MySQL 通常靠校对规则 / `LOWER`）。
+
+**别把用户输入直接拼进字符串**，用 `:kw` 参数，防注入。
+
+---
+
+### 场景 7：判空 → `IS NULL` / `IS NOT NULL`
+
+**业务：** 还没填手机号；已经绑定微信。
+
+```sql
+WHERE user.phone IS NULL
+WHERE user.wechatId IS NOT NULL
+```
+
+```ts
+.where('user.phone IS NULL')
+.where('user.wechatId IS NOT NULL')
+```
+
+**坑：** `WHERE user.phone = NULL` 在 SQL 里**不对**（结果不是你想的）；判空必须用 `IS NULL`。
+
+软删场景也常见：`deletedAt IS NULL` 表示未删除（若没用 TypeORM 的 `@DeleteDateColumn` 自动过滤）。
+
+---
+
+### 场景 8：统计行数 → `COUNT`
+
+**业务：** 活跃用户有多少人。
+
+```sql
+SELECT COUNT(user.id) AS cnt FROM users user WHERE user.isActive = true
+```
+
+```ts
+const { cnt } = await userRepo
+  .createQueryBuilder('user')
+  .select('COUNT(user.id)', 'cnt')
+  .where('user.isActive = :a', { a: true })
+  .getRawOne();
+// → { cnt: '42' }  （驱动常返回字符串，需要时 Number(cnt)）
+```
+
+| 写法 | 差异直觉 |
+| --- | --- |
+| `COUNT(*)` | 数行数 |
+| `COUNT(user.phone)` | 数 phone **非 NULL** 的行 |
+| `COUNT(DISTINCT user.city)` | 去重后再数 |
+
+聚合结果不是完整实体 → 用 **`getRawOne` / `getRawMany`**，不要 `getOne`。
+
+---
+
+### 场景 9：加总 / 平均 / 最大最小 → `SUM` `AVG` `MAX` `MIN`
+
+**业务：** 全站照片总数；平均分；最高分。
+
+```sql
+SELECT SUM(user.photosCount) AS total FROM users user
+SELECT AVG(user.score) AS avgScore FROM users user
+SELECT MAX(user.score) AS maxScore, MIN(user.score) AS minScore FROM users user
+```
+
+```ts
+// SUM：求和
+const { total } = await userRepo
+  .createQueryBuilder('user')
+  .select('SUM(user.photosCount)', 'total')
+  .getRawOne();
+
+// AVG：平均
+const { avgScore } = await userRepo
+  .createQueryBuilder('user')
+  .select('AVG(user.score)', 'avgScore')
+  .getRawOne();
+
+// MAX / MIN
+const { maxScore, minScore } = await userRepo
+  .createQueryBuilder('user')
+  .select('MAX(user.score)', 'maxScore')
+  .addSelect('MIN(user.score)', 'minScore')
+  .getRawOne();
+```
+
+| 函数 | 含义 | 典型业务 |
+| --- | --- | --- |
+| `SUM(x)` | 求和 | 销量、积分、照片数加总 |
+| `AVG(x)` | 平均 | 均分、客单价 |
+| `MAX(x)` / `MIN(x)` | 最大 / 最小 | 最高分、最早创建时间 |
+
+TypeORM 文档经典例子：
+
+```ts
+const { sum } = await userRepo
+  .createQueryBuilder('user')
+  .select('SUM(user.photosCount)', 'sum') // ① 表达式  ② 结果别名
+  .where('user.id = :id', { id: 1 })
+  .getRawOne();
+```
+
+`.select(表达式, 别名)` → `SELECT 表达式 AS 别名`。
+
+---
+
+### 场景 10：分组统计 → `GROUP BY`（可加 `HAVING`）
+
+**业务：** 按姓氏统计人数 / 照片总数；只看照片总数 > 10 的姓氏。
+
+```sql
+SELECT user.lastName AS lastName, SUM(user.photosCount) AS total
+FROM users user
+GROUP BY user.lastName
+HAVING SUM(user.photosCount) > 10
+```
+
+```ts
+const rows = await userRepo
+  .createQueryBuilder('user')
+  .select('user.lastName', 'lastName')
+  .addSelect('SUM(user.photosCount)', 'total')
+  .groupBy('user.lastName')
+  .having('SUM(user.photosCount) > :min', { min: 10 })
+  .getRawMany();
+// → [ { lastName: 'Saw', total: '15' }, ... ]
+```
+
+| | `WHERE` | `HAVING` |
+| --- | --- | --- |
+| 时机 | **分组前**过滤行 | **分组后**过滤组 |
+| 例子 | 只统计活跃用户 | 只保留「总和 > 10」的组 |
+
+```ts
+.where('user.isActive = :a', { a: true })      // 先丢掉 inactive
+.groupBy('user.lastName')
+.having('COUNT(user.id) >= :n', { n: 2 })      // 再丢掉人数不足的姓
+```
+
+---
+
+### 场景 11：排序 → `ORDER BY`
+
+**业务：** 最新注册的在前；同分再按名字。
+
+```sql
+ORDER BY user.createdAt DESC, user.name ASC
+```
+
+```ts
+.orderBy('user.createdAt', 'DESC')
+.addOrderBy('user.name', 'ASC')
+```
+
+`ASC` 升序（默认），`DESC` 降序。
+
+---
+
+### 场景 12：翻页 → `LIMIT` / `OFFSET`（QB 里常用 `take` / `skip`）
+
+**业务：** 第 3 页，每页 10 条 → 跳过 20，取 10。
+
+```sql
+LIMIT 10 OFFSET 20
+```
+
+```ts
+.orderBy('user.id', 'ASC')
+.skip(20)  // OFFSET
+.take(10)  // LIMIT
+.getMany();
+```
+
+列表接口几乎总是：`WHERE`（筛）+ `ORDER BY`（排）+ `skip/take`（页）。
+
+---
+
+### 场景 13：去重 → `DISTINCT`
+
+**业务：** 用户来自哪些城市（城市名不重复）。
+
+```sql
+SELECT DISTINCT user.city AS city FROM users user
+```
+
+```ts
+await userRepo
+  .createQueryBuilder('user')
+  .select('DISTINCT user.city', 'city')
+  .getRawMany();
+```
+
+或 `COUNT(DISTINCT user.city)` 数有多少个不同城市。
+
+---
+
+### 场景 14：空值兜底 → `COALESCE`
+
+**业务：** 展示名优先用昵称，没有就用登录名。
+
+```sql
+SELECT COALESCE(user.nickname, user.name) AS displayName FROM users user
+```
+
+```ts
+.select('COALESCE(user.nickname, user.name)', 'displayName')
+.getRawMany();
+```
+
+`COALESCE(a, b, c)` = 从左到右第一个非 NULL。
+
+---
+
+### 和「查实体」怎么选
+
+| 你想要 | 做法 |
+| --- | --- |
+| `User` / `User[]` 对象 | `getOne` / `getMany`（SELECT 实体列） |
+| 个数、总和、分组报表 | `COUNT`/`SUM`/… + `getRawOne` / `getRawMany` |
+| 条件组合 | `AND`/`OR`/`IN`/`LIKE`/`IS NULL`… 写在 `where` |
+
+### 记忆口诀（SQL 场景）
+
+- **筛行：** `AND`/`OR`、比较符、`BETWEEN`、`IN`、`LIKE`、`IS NULL`  
+- **算数：** `COUNT`/`SUM`/`AVG`/`MAX`/`MIN` → 配合 `getRaw*`  
+- **分组：** `GROUP BY` 切片；组后过滤用 `HAVING`  
+- **列表：** `ORDER BY` + `skip`/`take`  
+- **判空用 `IS NULL`，别写 `= NULL`**  
+- **参数用 `:name` / `:...ids`，别拼接用户输入**  
+

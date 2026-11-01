@@ -98,6 +98,10 @@ export default defineConfig({
             text: "spider",
             link: "/spider",
           },
+          {
+            text:"typeorm",
+            link:"/typeorm",
+          }
         ],
       },
       {
